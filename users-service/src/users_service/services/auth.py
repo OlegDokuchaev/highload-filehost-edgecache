@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from users_service.domain.errors import (
@@ -32,13 +33,17 @@ class AuthService:
             if existing is not None:
                 raise UserAlreadyExistsError("normalized_login already exists")
 
-            user = await repo.create_user(
-                login=login,
-                normalized_login=normalized_login,
-                password_hash=password_hash,
-            )
-            await session.commit()
-            return user.id, user.login, user.normalized_login
+            try:
+                user = await repo.create_user(
+                    login=login,
+                    normalized_login=normalized_login,
+                    password_hash=password_hash,
+                )
+                await session.commit()
+                return user.id, user.login, user.normalized_login
+            except IntegrityError as exc:
+                await session.rollback()
+                raise UserAlreadyExistsError("normalized_login already exists") from exc
 
     async def login(self, *, login: str, password: str) -> tuple[str, UUID, str]:
         normalized_login = self._security.normalize_login(login)
