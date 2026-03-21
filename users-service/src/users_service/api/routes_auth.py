@@ -2,6 +2,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from users_service.api.schemas import (
+    ErrorResponse,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
@@ -20,7 +21,26 @@ from users_service.services.auth import AuthService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register new user",
+    description=(
+        "Creates a new user. Password must follow policy: 12-128 chars, "
+        "uppercase, lowercase, digit, special character."
+    ),
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "model": ErrorResponse,
+            "description": "Password policy violation or invalid input.",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "normalized_login already exists.",
+        },
+    },
+)
 @inject
 async def register(
     payload: RegisterRequest,

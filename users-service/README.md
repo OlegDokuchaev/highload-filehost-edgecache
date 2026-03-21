@@ -33,7 +33,7 @@ pytest tests/integration -q
 - Язык: `Python 3.12+`
 - Web: `FastAPI`
 - DB: `PostgreSQL`
-- ORM: `SQLAlchemy 2.x (async)`
+- ORM: `SQLAlchemy 2.x (async)` (минимум `2.0.40`)
 - Валидация: `Pydantic v2`
 - DI: `dependency-injector`
 - Тесты: `pytest`
@@ -117,8 +117,12 @@ pytest tests/integration -q
 ## 7) UUID и совместимость БД
 
 Идентификатор пользователя хранится как UUID. В модели используется явный тип
-`Uuid(as_uuid=True)`, что упрощает совместимую работу между PostgreSQL и SQLite
-в тестовой среде.
+`GUID` с диалектным fallback:
+- PostgreSQL: нативный UUID-тип;
+- SQLite: `CHAR(36)` с преобразованием в/из UUID.
+
+Это позволяет одинаково работать с UUID в production (PostgreSQL) и локальных
+интеграционных тестах (SQLite).
 
 ## 8) Очистка лишних файлов
 
