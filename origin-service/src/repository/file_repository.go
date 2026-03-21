@@ -48,6 +48,24 @@ func (r *FileRepository) GetFile(ctx context.Context, fileID string) (*StoredFil
 	}, nil
 }
 
+func (r *FileRepository) ListFilesByUserID(userID string) ([]FileMetadata, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("userID is required")
+	}
+
+	r.db.mu.RLock()
+	defer r.db.mu.RUnlock()
+
+	items := make([]FileMetadata, 0)
+	for _, meta := range r.db.metadata {
+		if meta.UserID == userID {
+			items = append(items, meta)
+		}
+	}
+
+	return items, nil
+}
+
 func (r *FileRepository) UploadFile(
 	ctx context.Context,
 	userID string,
@@ -76,6 +94,7 @@ func (r *FileRepository) UploadFile(
 		UserID:     userID,
 		ObjectName: buildObjectName(userID, fileID, fileName),
 		FileName:   fileName,
+		ContentType: contentType,
 		Size:       size,
 		UploadedAt: time.Now().UTC(),
 	}

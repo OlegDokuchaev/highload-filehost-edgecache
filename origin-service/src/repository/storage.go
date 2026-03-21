@@ -19,6 +19,7 @@ type FileMetadata struct {
 	UserID     string
 	ObjectName string
 	FileName   string
+	ContentType string
 	Size       int64
 	UploadedAt time.Time
 }
