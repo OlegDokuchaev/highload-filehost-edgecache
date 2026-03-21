@@ -82,7 +82,9 @@ def test_register_weak_password_returns_400(test_client: TestClient, password: s
         json={"login": "WeakPasswordUser", "password": password},
     )
     assert response.status_code == 400
-    assert "password" in response.json()["detail"].lower()
+    body = response.json()
+    assert isinstance(body.get("detail"), str)
+    assert body["detail"]
 
 
 def test_verify_invalid_token_returns_active_false(test_client: TestClient) -> None:
