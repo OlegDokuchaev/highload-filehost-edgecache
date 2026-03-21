@@ -19,6 +19,11 @@ class GUID(TypeDecorator[UUID]):
     impl = CHAR
     cache_ok = True
 
+    @property
+    def python_type(self) -> type[UUID]:
+        """Ожидаемый Python-тип значения колонки (не наследуем str от CHAR)."""
+        return UUID
+
     def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[object]:
         if dialect.name == "postgresql":
             return cast(TypeEngine[object], dialect.type_descriptor(PG_UUID(as_uuid=True)))
