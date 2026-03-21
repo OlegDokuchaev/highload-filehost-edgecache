@@ -1,5 +1,12 @@
+import asyncio
+from pathlib import Path
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+
+from users_service.db.init_db import create_tables
+from users_service.main import create_app
 
 
 pytestmark = pytest.mark.integration
@@ -59,3 +66,31 @@ def test_verify_invalid_token_returns_active_false(test_client: TestClient) -> N
     response = test_client.post("/auth/verify", json={"token": "not-a-jwt"})
     assert response.status_code == 200
     assert response.json() == {"active": False, "user_id": None, "normalized_login": None}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_register_same_login(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "concurrent_users.db"
+    monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
+    monkeypatch.setenv("USERS_JWT_SECRET", "concurrent-secret")
+
+    app = create_app()
+    await create_tables(app.state.container.engine())
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {"login": "RaceLogin", "password": "VeryStrongPass!1"}
+
+        async def register_once() -> httpx.Response:
+            return await client.post("/auth/register", json=payload)
+
+        responses = await asyncio.gather(*[register_once() for _ in range(8)])
+
+    await app.state.container.engine().dispose()
+
+    status_codes = [response.status_code for response in responses]
+    assert status_codes.count(201) == 1
+    assert status_codes.count(409) == 7
