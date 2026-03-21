@@ -63,7 +63,7 @@ func (h *URLHandler) postFiles(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/octet-stream"
 	}
 
-	result, err = h.uploadService.Upload(r.Context(), service.UploadInput{
+	result, err := h.uploadService.Upload(r.Context(), service.UploadInput{
 		UserID:      userID,
 		FileName:    header.Filename,
 		ContentType: contentType,
