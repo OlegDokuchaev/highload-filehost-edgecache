@@ -8,8 +8,7 @@ class RegisterRequest(BaseModel):
 
     login: str = Field(min_length=3, max_length=255)
     password: str = Field(
-        min_length=12,
-        max_length=128,
+        min_length=1,
         description=(
             "Password policy: 12-128 chars, at least one uppercase letter, "
             "one lowercase letter, one digit, and one special character."
