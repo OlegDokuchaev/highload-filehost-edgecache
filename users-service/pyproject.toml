@@ -43,6 +43,7 @@ asyncio_mode = "auto"
 markers = [
   "unit: unit-level tests",
   "integration: integration-level tests",
+  "postgres: tests that require PostgreSQL backend",
 ]
 
 [tool.mypy]

@@ -33,7 +33,7 @@ pytest tests/integration -q
 - Язык: `Python 3.12+`
 - Web: `FastAPI`
 - DB: `PostgreSQL`
-- ORM: `SQLAlchemy 2.x (async)`
+- ORM: `SQLAlchemy 2.x (async)` (минимум `2.0.40`)
 - Валидация: `Pydantic v2`
 - DI: `dependency-injector`
 - Тесты: `pytest`
@@ -65,7 +65,21 @@ tests/
 - `USERS_JWT_ALGORITHM=HS256`
 - `USERS_ACCESS_TOKEN_EXPIRE_MINUTES=60`
 
-## 4) Локальный запуск
+Важно: `USERS_JWT_SECRET` из примера небезопасен для production. Перед деплоем
+обязательно задай уникальный длинный секрет.
+
+## 4) Политика паролей
+
+Пароль должен:
+- иметь длину от 12 до 128 символов;
+- содержать минимум 1 заглавную букву;
+- содержать минимум 1 строчную букву;
+- содержать минимум 1 цифру;
+- содержать минимум 1 специальный символ.
+
+При нарушении политики сервис возвращает `400`.
+
+## 5) Локальный запуск
 
 1. Создать `.env`:
 
@@ -85,7 +99,7 @@ docker compose up -d --build
 - `http://localhost:8001/docs`
 - `http://localhost:8001/openapi.json`
 
-## 5) Тесты и типизация
+## 6) Тесты и типизация
 
 ```bash
 pip install -e .[dev]
@@ -100,7 +114,31 @@ pytest tests/unit -q
 pytest tests/integration -q
 ```
 
-## 6) Очистка лишних файлов
+### Интеграционные тесты с PostgreSQL
+
+Часть сценариев помечена `@pytest.mark.postgres` и **пропускается**, если не задан
+`USERS_TEST_DB_URL` на реальный PostgreSQL (например `postgresql+asyncpg://...`).
+Чтобы проверить нативный UUID и поведение на Postgres:
+
+```bash
+set USERS_TEST_DB_URL=postgresql+asyncpg://user:pass@localhost:5432/users_test
+pytest -m postgres -q
+```
+
+(В bash: `export USERS_TEST_DB_URL=...`.) База должна существовать; таблицы
+создаются фикстурами тестов.
+
+## 7) UUID и совместимость БД
+
+Идентификатор пользователя хранится как UUID. В модели используется явный тип
+`GUID` с диалектным fallback:
+- PostgreSQL: нативный UUID-тип;
+- SQLite: `CHAR(36)` с преобразованием в/из UUID.
+
+Это позволяет одинаково работать с UUID в production (PostgreSQL) и локальных
+интеграционных тестах (SQLite).
+
+## 8) Очистка лишних файлов
 
 Скрипты очистки артефактов разработки:
 

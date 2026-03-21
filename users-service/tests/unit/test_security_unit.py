@@ -9,8 +9,8 @@ from users_service.services.security import SecurityService
 
 def _security_service() -> SecurityService:
     settings = Settings(
-        USERS_JWT_SECRET="unit-secret",
-        USERS_ACCESS_TOKEN_EXPIRE_MINUTES=30,
+        jwt_secret="unit-secret",
+        access_token_expire_minutes=30,
     )
     return SecurityService(settings=settings)
 
@@ -26,7 +26,10 @@ def test_normalize_login() -> None:
 @pytest.mark.parametrize(
     ("password", "should_raise"),
     [
+        ("A1!bcdefghij", False),  # exact min length (12)
+        ("A1!" + ("b" * 125), False),  # exact max length (128)
         ("short1A!", True),
+        ("A1!" + ("b" * 126), True),  # length 129
         ("alllowercase123!", True),
         ("ALLUPPERCASE123!", True),
         ("NoDigitsPass!!", True),

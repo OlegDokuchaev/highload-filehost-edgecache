@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -8,14 +7,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from users_service.config import Settings
-from users_service.domain.errors import PasswordPolicyError
-
-PASSWORD_REGEX = {
-    "uppercase": re.compile(r"[A-Z]"),
-    "lowercase": re.compile(r"[a-z]"),
-    "digit": re.compile(r"[0-9]"),
-    "special": re.compile(r"[^A-Za-z0-9]"),
-}
+from users_service.domain.password_policy import validate_password_policy
 
 
 class SecurityService:
@@ -28,17 +20,7 @@ class SecurityService:
         return login.strip().lower()
 
     def validate_password(self, password: str) -> None:
-        if not (12 <= len(password) <= 128):
-            raise PasswordPolicyError("password length must be between 12 and 128")
-
-        if not PASSWORD_REGEX["uppercase"].search(password):
-            raise PasswordPolicyError("password must contain an uppercase letter")
-        if not PASSWORD_REGEX["lowercase"].search(password):
-            raise PasswordPolicyError("password must contain a lowercase letter")
-        if not PASSWORD_REGEX["digit"].search(password):
-            raise PasswordPolicyError("password must contain a digit")
-        if not PASSWORD_REGEX["special"].search(password):
-            raise PasswordPolicyError("password must contain a special character")
+        validate_password_policy(password)
 
     def hash_password(self, password: str) -> str:
         return self._pwd_context.hash(password)
