@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
@@ -21,6 +22,7 @@ def test_register_login_verify_flow(test_client: TestClient) -> None:
     body = register_response.json()
     assert body["normalized_login"] == "mylogin"
     assert body["user_id"]
+    UUID(body["user_id"])
 
     login_response = test_client.post(
         "/auth/login",
@@ -62,6 +64,14 @@ def test_login_invalid_credentials(test_client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_register_weak_password_returns_400(test_client: TestClient) -> None:
+    response = test_client.post(
+        "/auth/register",
+        json={"login": "WeakPasswordUser", "password": "NoSpecial123"},
+    )
+    assert response.status_code == 400
+
+
 def test_verify_invalid_token_returns_active_false(test_client: TestClient) -> None:
     response = test_client.post("/auth/verify", json={"token": "not-a-jwt"})
     assert response.status_code == 200
@@ -94,3 +104,32 @@ async def test_concurrent_register_same_login(
     status_codes = [response.status_code for response in responses]
     assert status_codes.count(201) == 1
     assert status_codes.count(409) == 7
+
+
+def test_verify_expired_token_returns_active_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "expired_users.db"
+    monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
+    monkeypatch.setenv("USERS_JWT_SECRET", "expired-secret")
+    monkeypatch.setenv("USERS_ACCESS_TOKEN_EXPIRE_MINUTES", "-1")
+
+    app = create_app()
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/auth/register",
+            json={"login": "ExpiredUser", "password": "VeryStrongPass!1"},
+        )
+        assert register_response.status_code == 201
+
+        login_response = client.post(
+            "/auth/login",
+            json={"login": "ExpiredUser", "password": "VeryStrongPass!1"},
+        )
+        assert login_response.status_code == 200
+
+        token = login_response.json()["access_token"]
+        verify_response = client.post("/auth/verify", json={"token": token})
+        assert verify_response.status_code == 200
+        assert verify_response.json()["active"] is False

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from users_service.db.base import Base
@@ -12,7 +12,7 @@ from users_service.db.base import Base
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     login: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_login: Mapped[str] = mapped_column(
         String(255),

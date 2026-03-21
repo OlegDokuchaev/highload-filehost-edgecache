@@ -9,8 +9,8 @@ from users_service.services.security import SecurityService
 
 def _security_service() -> SecurityService:
     settings = Settings(
-        USERS_JWT_SECRET="unit-secret",
-        USERS_ACCESS_TOKEN_EXPIRE_MINUTES=30,
+        jwt_secret="unit-secret",
+        access_token_expire_minutes=30,
     )
     return SecurityService(settings=settings)
 
