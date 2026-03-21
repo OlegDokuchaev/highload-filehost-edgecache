@@ -26,7 +26,10 @@ def test_normalize_login() -> None:
 @pytest.mark.parametrize(
     ("password", "should_raise"),
     [
+        ("A1!bcdefghij", False),  # exact min length (12)
+        ("A1!" + ("b" * 125), False),  # exact max length (128)
         ("short1A!", True),
+        ("A1!" + ("b" * 126), True),  # length 129
         ("alllowercase123!", True),
         ("ALLUPPERCASE123!", True),
         ("NoDigitsPass!!", True),

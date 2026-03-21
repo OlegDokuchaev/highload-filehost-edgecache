@@ -1,4 +1,5 @@
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -147,3 +148,18 @@ def test_verify_expired_token_returns_active_false(
         verify_response = client.post("/auth/verify", json={"token": expired_token})
         assert verify_response.status_code == 200
         assert verify_response.json()["active"] is False
+
+
+@pytest.mark.postgres
+def test_postgres_uuid_roundtrip(test_client: TestClient) -> None:
+    db_url = os.getenv("USERS_TEST_DB_URL", "")
+    if not db_url.startswith("postgresql+asyncpg://"):
+        pytest.skip("postgres test runs only when USERS_TEST_DB_URL is set to postgres")
+
+    response = test_client.post(
+        "/auth/register",
+        json={"login": "PostgresUuidUser", "password": "VeryStrongPass!1"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    UUID(body["user_id"])
