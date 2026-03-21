@@ -11,11 +11,7 @@ from users_service.api.schemas import (
     VerifyResponse,
 )
 from users_service.container import Container
-from users_service.domain.errors import (
-    InvalidCredentialsError,
-    PasswordPolicyError,
-    UserAlreadyExistsError,
-)
+from users_service.domain.errors import InvalidCredentialsError, UserAlreadyExistsError
 from users_service.services.auth import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -54,11 +50,6 @@ async def register(
     except UserAlreadyExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except PasswordPolicyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
 
