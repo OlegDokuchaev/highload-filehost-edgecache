@@ -1,7 +1,9 @@
-import re
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from users_service.domain.errors import PasswordPolicyError
+from users_service.domain.password_policy import validate_password_policy
 
 
 class RegisterRequest(BaseModel):
@@ -19,15 +21,11 @@ class RegisterRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_password_policy(cls, value: str) -> str:
-        if not re.search(r"[A-Z]", value):
-            raise ValueError("password must contain an uppercase letter")
-        if not re.search(r"[a-z]", value):
-            raise ValueError("password must contain a lowercase letter")
-        if not re.search(r"[0-9]", value):
-            raise ValueError("password must contain a digit")
-        if not re.search(r"[^A-Za-z0-9]", value):
-            raise ValueError("password must contain a special character")
+    def validate_password_policy_field(cls, value: str) -> str:
+        try:
+            validate_password_policy(value)
+        except PasswordPolicyError as exc:
+            raise ValueError(str(exc)) from exc
         return value
 
 
