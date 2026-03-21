@@ -68,12 +68,21 @@ def test_login_invalid_credentials(test_client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_register_weak_password_returns_400(test_client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "password",
+    [
+        "NoSpecial123",  # no special char
+        "short1A!",  # too short
+        "A1!" + ("b" * 126),  # too long (129 chars)
+    ],
+)
+def test_register_weak_password_returns_400(test_client: TestClient, password: str) -> None:
     response = test_client.post(
         "/auth/register",
-        json={"login": "WeakPasswordUser", "password": "NoSpecial123"},
+        json={"login": "WeakPasswordUser", "password": password},
     )
     assert response.status_code == 400
+    assert "password" in response.json()["detail"].lower()
 
 
 def test_verify_invalid_token_returns_active_false(test_client: TestClient) -> None:
