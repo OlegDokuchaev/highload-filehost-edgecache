@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
@@ -11,6 +11,29 @@ from users_service.api.routes_auth import router as auth_router
 from users_service.container import Container
 from users_service.db.init_db import create_tables
 from users_service.domain.errors import PasswordPolicyError
+
+
+def format_validation_error_detail(errors: Sequence[object]) -> str:
+    """Текст для API из списка ошибок Pydantic; устойчиво к разным формам элементов, не бросает."""
+    try:
+        if not errors:
+            return "invalid input"
+        parts: list[str] = []
+        for raw in errors:
+            try:
+                if isinstance(raw, dict):
+                    msg = raw.get("msg") or raw.get("message")
+                    if msg is not None and str(msg).strip():
+                        parts.append(str(msg))
+                    else:
+                        parts.append(str(raw))
+                else:
+                    parts.append(str(raw))
+            except Exception:
+                parts.append("invalid input")
+        return "; ".join(parts) if parts else "invalid input"
+    except Exception:
+        return "invalid input"
 
 
 @asynccontextmanager
@@ -51,16 +74,20 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
-        request: Request,
+        _request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        # Normalize schema validation failures to API contract style.
-        errors = exc.errors()
-        detail = errors[0]["msg"] if errors else "invalid input"
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": detail},
-        )
+        try:
+            detail = format_validation_error_detail(exc.errors())
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": detail},
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": "invalid input"},
+            )
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
