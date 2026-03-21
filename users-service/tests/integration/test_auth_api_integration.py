@@ -1,11 +1,14 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
 
+from users_service.config import Settings
 from users_service.db.init_db import create_tables
 from users_service.main import create_app
 
@@ -113,7 +116,6 @@ def test_verify_expired_token_returns_active_false(
     db_file = tmp_path / "expired_users.db"
     monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
     monkeypatch.setenv("USERS_JWT_SECRET", "expired-secret")
-    monkeypatch.setenv("USERS_ACCESS_TOKEN_EXPIRE_MINUTES", "-1")
 
     app = create_app()
     with TestClient(app) as client:
@@ -129,7 +131,19 @@ def test_verify_expired_token_returns_active_false(
         )
         assert login_response.status_code == 200
 
-        token = login_response.json()["access_token"]
-        verify_response = client.post("/auth/verify", json={"token": token})
+        user_id = login_response.json()["user_id"]
+        settings = Settings()
+        expired_payload = {
+            "sub": user_id,
+            "normalized_login": "expireduser",
+            "iat": int((datetime.now(UTC) - timedelta(minutes=10)).timestamp()),
+            "exp": int((datetime.now(UTC) - timedelta(minutes=5)).timestamp()),
+        }
+        expired_token = jwt.encode(
+            expired_payload,
+            settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+        verify_response = client.post("/auth/verify", json={"token": expired_token})
         assert verify_response.status_code == 200
         assert verify_response.json()["active"] is False

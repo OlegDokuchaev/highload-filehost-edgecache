@@ -1,18 +1,52 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String, Uuid, func
+from sqlalchemy import CHAR, DateTime, String, TypeDecorator, func
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql.type_api import TypeEngine
 
 from users_service.db.base import Base
+
+
+class GUID(TypeDecorator[UUID]):
+    """Portable UUID type: native UUID on PostgreSQL, CHAR(36) elsewhere."""
+
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[object]:
+        if dialect.name == "postgresql":
+            return cast(TypeEngine[object], dialect.type_descriptor(PG_UUID(as_uuid=True)))
+        return cast(TypeEngine[object], dialect.type_descriptor(CHAR(36)))
+
+    def process_bind_param(
+        self,
+        value: Any | None,
+        dialect: Dialect,
+    ) -> str | UUID | None:
+        if value is None:
+            return value
+        return str(value)
+
+    def process_result_value(
+        self,
+        value: Any | None,
+        dialect: Dialect,
+    ) -> UUID | None:
+        if value is None:
+            return value
+        return UUID(str(value))
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
     login: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_login: Mapped[str] = mapped_column(
         String(255),
