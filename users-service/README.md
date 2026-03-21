@@ -114,6 +114,20 @@ pytest tests/unit -q
 pytest tests/integration -q
 ```
 
+### Интеграционные тесты с PostgreSQL
+
+Часть сценариев помечена `@pytest.mark.postgres` и **пропускается**, если не задан
+`USERS_TEST_DB_URL` на реальный PostgreSQL (например `postgresql+asyncpg://...`).
+Чтобы проверить нативный UUID и поведение на Postgres:
+
+```bash
+set USERS_TEST_DB_URL=postgresql+asyncpg://user:pass@localhost:5432/users_test
+pytest -m postgres -q
+```
+
+(В bash: `export USERS_TEST_DB_URL=...`.) База должна существовать; таблицы
+создаются фикстурами тестов.
+
 ## 7) UUID и совместимость БД
 
 Идентификатор пользователя хранится как UUID. В модели используется явный тип
