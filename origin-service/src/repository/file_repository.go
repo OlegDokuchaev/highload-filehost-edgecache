@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,11 +27,13 @@ func (r *FileRepository) GetFile(ctx context.Context, fileID string) (*StoredFil
 		return nil, fmt.Errorf("fileID is required")
 	}
 
-	r.db.mu.RLock()
-	meta, ok := r.db.metadata[fileID]
-	r.db.mu.RUnlock()
-	if !ok {
-		slog.Warn("file metadata not found", "fileID", fileID)
+	meta, err := r.db.loadMetadata(ctx, fileID)
+	if err != nil {
+		if errors.Is(err, ErrFileNotFound) {
+			slog.Warn("file metadata not found", "fileID", fileID)
+		} else {
+			slog.Error("failed to load metadata", "error", err, "fileID", fileID)
+		}
 		return nil, ErrFileNotFound
 	}
 
@@ -59,11 +62,14 @@ func (r *FileRepository) ListFilesByUserID(userID string) ([]FileMetadata, error
 		return nil, fmt.Errorf("userID is required")
 	}
 
-	r.db.mu.RLock()
-	defer r.db.mu.RUnlock()
+	allMetas, err := r.db.listAllMetadata(context.Background())
+	if err != nil {
+		slog.Error("failed to list metadata", "error", err)
+		return nil, err
+	}
 
 	items := make([]FileMetadata, 0)
-	for _, meta := range r.db.metadata {
+	for _, meta := range allMetas {
 		if meta.UserID == userID {
 			items = append(items, meta)
 		}
@@ -121,9 +127,10 @@ func (r *FileRepository) UploadFile(
 		return nil, fmt.Errorf("put object: %w", err)
 	}
 
-	r.db.mu.Lock()
-	r.db.metadata[meta.FileID] = meta
-	r.db.mu.Unlock()
+	if err := r.db.saveMetadata(ctx, meta); err != nil {
+		slog.Error("failed to save metadata to MinIO", "error", err, "fileID", fileID)
+		return nil, fmt.Errorf("save metadata: %w", err)
+	}
 
 	slog.Info("file uploaded to repository", "fileID", fileID, "userID", userID, "object", meta.ObjectName)
 	return &meta, nil
