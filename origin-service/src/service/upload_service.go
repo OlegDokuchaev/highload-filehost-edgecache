@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"origin-service/repository"
@@ -52,21 +53,27 @@ func NewUploadService(repo *repository.FileRepository) *UploadService {
 
 func (s *UploadService) Upload(ctx context.Context, input UploadInput) (*FileInfo, error) {
 	if input.UserID == "" {
+		slog.Warn("upload attempt with empty userID")
 		return nil, fmt.Errorf("userID is required")
 	}
 	if input.FileName == "" {
+		slog.Warn("upload attempt with empty fileName")
 		return nil, fmt.Errorf("fileName is required")
 	}
 	if input.Body == nil {
+		slog.Warn("upload attempt with nil body")
 		return nil, fmt.Errorf("file body is required")
 	}
 	if input.SizeBytes > s.maxUploadSize {
+		slog.Warn("upload rejected: payload too large", "size", input.SizeBytes, "max", s.maxUploadSize)
 		return nil, ErrPayloadTooLarge
 	}
 	contentType := input.ContentType
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
+
+	slog.Info("upload started", "userID", input.UserID, "fileName", input.FileName, "size", input.SizeBytes)
 
 	meta, err := s.repo.UploadFile(
 		ctx,
@@ -77,39 +84,45 @@ func (s *UploadService) Upload(ctx context.Context, input UploadInput) (*FileInf
 		input.SizeBytes,
 	)
 	if err != nil {
+		slog.Error("upload failed", "error", err, "userID", input.UserID, "fileName", input.FileName)
 		return nil, err
 	}
 
+	slog.Info("upload completed", "fileID", meta.FileID, "userID", meta.UserID, "fileName", meta.FileName)
 	return mapFileMetadata(meta), nil
 }
 
 func (s *UploadService) ListByUserID(userID string) ([]FileInfo, error) {
+	if userID == "" {
+		slog.Warn("list files called with empty userID")
+		return nil, fmt.Errorf("userID is required")
+	}
 	metas, err := s.repo.ListFilesByUserID(userID)
 	if err != nil {
+		slog.Error("failed to list files", "error", err, "userID", userID)
 		return nil, err
 	}
-
 	items := make([]FileInfo, 0, len(metas))
 	for i := range metas {
 		items = append(items, *mapFileMetadata(&metas[i]))
 	}
-
 	return items, nil
 }
 
 func (s *UploadService) DownloadByFileID(ctx context.Context, fileID string) (*FileContent, error) {
 	if fileID == "" {
+		slog.Warn("download called with empty fileID")
 		return nil, ErrNotFound
 	}
-
 	stored, err := s.repo.GetFile(ctx, fileID)
 	if err != nil {
 		if err == repository.ErrFileNotFound {
+			slog.Warn("file not found", "fileID", fileID)
 			return nil, ErrNotFound
 		}
+		slog.Error("failed to get file", "error", err, "fileID", fileID)
 		return nil, err
 	}
-
 	contentType := stored.Metadata.ContentType
 	if contentType == "" {
 		contentType = "application/octet-stream"

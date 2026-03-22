@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"log/slog"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -49,15 +50,18 @@ func NewMinIOStorage(
 		Secure: useSSL,
 	})
 	if err != nil {
+		slog.Error("failed to create minio client", "error", err)
 		return nil, fmt.Errorf("init minio client: %w", err)
 	}
 
 	exists, err := client.BucketExists(ctx, bucket)
 	if err != nil {
+		slog.Error("failed to check bucket existence", "error", err)
 		return nil, fmt.Errorf("check bucket existence: %w", err)
 	}
 	if !exists {
 		if err = client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
+			slog.Error("failed to create bucket", "error", err)
 			return nil, fmt.Errorf("create bucket: %w", err)
 		}
 	}

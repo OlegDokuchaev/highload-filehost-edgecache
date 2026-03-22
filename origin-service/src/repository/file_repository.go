@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -21,6 +22,7 @@ func NewFileRepository(db *MinIOStorage) *FileRepository {
 
 func (r *FileRepository) GetFile(ctx context.Context, fileID string) (*StoredFile, error) {
 	if fileID == "" {
+		slog.Warn("get file called with empty fileID")
 		return nil, fmt.Errorf("fileID is required")
 	}
 
@@ -28,17 +30,20 @@ func (r *FileRepository) GetFile(ctx context.Context, fileID string) (*StoredFil
 	meta, ok := r.db.metadata[fileID]
 	r.db.mu.RUnlock()
 	if !ok {
+		slog.Warn("file metadata not found", "fileID", fileID)
 		return nil, ErrFileNotFound
 	}
 
 	obj, err := r.db.Client.GetObject(ctx, r.db.bucket, meta.ObjectName, minio.GetObjectOptions{})
 	if err != nil {
+		slog.Error("failed to get object from MinIO", "error", err, "fileID", fileID, "object", meta.ObjectName)
 		return nil, fmt.Errorf("get object: %w", err)
 	}
 	defer obj.Close()
 
 	data, err := io.ReadAll(obj)
 	if err != nil {
+		slog.Error("failed to read object body", "error", err, "fileID", fileID)
 		return nil, fmt.Errorf("read object body: %w", err)
 	}
 
@@ -50,6 +55,7 @@ func (r *FileRepository) GetFile(ctx context.Context, fileID string) (*StoredFil
 
 func (r *FileRepository) ListFilesByUserID(userID string) ([]FileMetadata, error) {
 	if userID == "" {
+		slog.Warn("list files called with empty userID")
 		return nil, fmt.Errorf("userID is required")
 	}
 
@@ -62,7 +68,7 @@ func (r *FileRepository) ListFilesByUserID(userID string) ([]FileMetadata, error
 			items = append(items, meta)
 		}
 	}
-
+	slog.Debug("listed files", "userID", userID, "count", len(items))
 	return items, nil
 }
 
@@ -75,28 +81,32 @@ func (r *FileRepository) UploadFile(
 	size int64,
 ) (*FileMetadata, error) {
 	if userID == "" {
+		slog.Warn("upload file called with empty userID")
 		return nil, fmt.Errorf("userID is required")
 	}
 	if fileName == "" {
+		slog.Warn("upload file called with empty fileName")
 		return nil, fmt.Errorf("fileName is required")
 	}
 	if size < 0 {
+		slog.Warn("upload file called with negative size")
 		return nil, fmt.Errorf("size must be >= 0")
 	}
 
 	fileID, err := generateFileID()
 	if err != nil {
+		slog.Error("failed to generate fileID", "error", err)
 		return nil, err
 	}
 
 	meta := FileMetadata{
-		FileID:     fileID,
-		UserID:     userID,
-		ObjectName: buildObjectName(userID, fileID, fileName),
-		FileName:   fileName,
+		FileID:      fileID,
+		UserID:      userID,
+		ObjectName:  buildObjectName(userID, fileID, fileName),
+		FileName:    fileName,
 		ContentType: contentType,
-		Size:       size,
-		UploadedAt: time.Now().UTC(),
+		Size:        size,
+		UploadedAt:  time.Now().UTC(),
 	}
 
 	_, err = r.db.Client.PutObject(ctx, r.db.bucket, meta.ObjectName, reader, meta.Size, minio.PutObjectOptions{
@@ -107,6 +117,7 @@ func (r *FileRepository) UploadFile(
 		},
 	})
 	if err != nil {
+		slog.Error("failed to put object to MinIO", "error", err, "fileID", fileID, "object", meta.ObjectName)
 		return nil, fmt.Errorf("put object: %w", err)
 	}
 
@@ -114,10 +125,10 @@ func (r *FileRepository) UploadFile(
 	r.db.metadata[meta.FileID] = meta
 	r.db.mu.Unlock()
 
+	slog.Info("file uploaded to repository", "fileID", fileID, "userID", userID, "object", meta.ObjectName)
 	return &meta, nil
 }
 
-// переделать потом на более корректную реализацию
 func generateFileID() (string, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
