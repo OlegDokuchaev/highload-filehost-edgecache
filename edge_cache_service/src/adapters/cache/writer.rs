@@ -53,6 +53,7 @@ impl Drop for CacheWriterImpl {
     fn drop(&mut self) {
         if !self.committed {
             let _ = std::fs::remove_file(&self.tmp_data);
+            let _ = std::fs::remove_file(&self.tmp_meta);
         }
     }
 }

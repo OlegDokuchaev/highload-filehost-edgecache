@@ -366,4 +366,34 @@ mod errors {
         assert!(!body.contains("connection refused"));
         assert_eq!(body, "origin unavailable");
     }
+
+    #[tokio::test]
+    async fn origin_stream_error_cleans_up_tmp_files() {
+        // given — origin stream fails after first chunk
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().returning(|_| {
+            let chunks: Vec<Result<Bytes, std::io::Error>> = vec![
+                Ok(Bytes::from("partial")),
+                Err(std::io::Error::other("connection reset")),
+            ];
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                body: Box::pin(stream::iter(chunks)),
+            })
+        });
+        let env = setup_with(origin).await;
+
+        // when — request may fail at transport level, that's expected
+        let resp = get(&env, "broken").send().await;
+        if let Ok(resp) = resp {
+            let _ = resp.bytes().await;
+        }
+
+        // then — no tmp or final files should remain
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(!env.cache_dir.join("broken.bin.tmp").exists());
+        assert!(!env.cache_dir.join("broken.json.tmp").exists());
+        assert!(!env.cache_dir.join("broken.bin").exists());
+        assert!(!env.cache_dir.join("broken.json").exists());
+    }
 }
