@@ -22,6 +22,6 @@ USER app
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/edge_cache_service .
+COPY --from=builder /app/target/release/edge-cache-service .
 
-CMD ["./edge_cache_service"]
+CMD ["./edge-cache-service"]

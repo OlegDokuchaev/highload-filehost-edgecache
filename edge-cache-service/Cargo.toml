@@ -1,5 +1,5 @@
 [package]
-name = "edge_cache_service"
+name = "edge-cache-service"
 version = "0.1.0"
 edition = "2024"
 
