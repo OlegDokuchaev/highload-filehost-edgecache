@@ -8,20 +8,25 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"context"
 
 	service "origin-service/service"
 )
 
+type TokenVerifierInterface interface {
+	Verify(ctx context.Context, authHeader string) (string, error)
+}
+
 type URLHandler struct {
 	uploadService *service.UploadService
-	tokenVerifier TokenVerifier
+	tokenVerifier TokenVerifierInterface
 	downloadBase  string
 	cacheMaxAge   int
 }
 
 func NewURLHandler(
 	uploadService *service.UploadService,
-	tokenVerifier TokenVerifier,
+	tokenVerifier TokenVerifierInterface,
 	downloadBase string,
 	cacheMaxAge int,
 ) *URLHandler {

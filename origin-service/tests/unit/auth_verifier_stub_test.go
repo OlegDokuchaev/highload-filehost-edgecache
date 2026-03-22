@@ -1,4 +1,4 @@
-package handlers
+package unit
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// StubTokenVerifier is test-only and intentionally not used in runtime.
+// StubTokenVerifier нужен как заглушка для локальных тестов.
 type StubTokenVerifier struct {
 	AllowedTokens map[string]string
 }

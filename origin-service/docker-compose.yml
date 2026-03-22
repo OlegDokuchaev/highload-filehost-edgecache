@@ -27,5 +27,32 @@ services:
       - minio_data:/data
     restart: unless-stopped
 
+  minio-test:
+    image: minio/minio:latest
+    container_name: minio-test
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: testuser
+      MINIO_ROOT_PASSWORD: testpassword
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    tmpfs: /data
+
+  
+  test-unit:
+    build:
+      context: .
+      dockerfile: Dockerfile.unit
+    container_name: origin-service-test-unit
+    depends_on:
+      minio-test:
+        condition: service_started
+    environment:
+      MINIO_ENDPOINT: minio-test:9000
+      MINIO_ACCESS_KEY: testuser
+      MINIO_SECRET_KEY: testpassword
+    restart: "no"
+
 volumes:
   minio_data:
