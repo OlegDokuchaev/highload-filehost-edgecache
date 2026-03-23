@@ -1,5 +1,6 @@
 use std::io;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use edge_cache_service::application::download::{DownloadAction, DownloadError, DownloadUseCase};
 use edge_cache_service::ports::cache::{CacheError, CacheMeta, CachedFile};
@@ -7,6 +8,13 @@ use edge_cache_service::ports::origin::{OriginError, OriginResponse};
 use futures_util::stream;
 
 use crate::support::mocks::{MockCacheRepo, MockCacheWriter, MockOriginClient};
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,6 +25,18 @@ fn make_cached_file() -> CachedFile {
         meta: CacheMeta {
             content_type: "image/png".to_string(),
             content_length: 1024,
+            expires_at: now_unix() + 3600,
+        },
+        stream: Box::pin(stream::empty()),
+    }
+}
+
+fn make_expired_cached_file() -> CachedFile {
+    CachedFile {
+        meta: CacheMeta {
+            content_type: "image/png".to_string(),
+            content_length: 1024,
+            expires_at: now_unix() - 1,
         },
         stream: Box::pin(stream::empty()),
     }
@@ -156,6 +176,7 @@ mod cache_hit {
                 meta: CacheMeta {
                     content_type: "video/mp4".to_string(),
                     content_length: 999_999,
+                    expires_at: now_unix() + 3600,
                 },
                 stream: Box::pin(stream::empty()),
             }))
@@ -405,5 +426,56 @@ mod cache_write_errors {
             result,
             Err(DownloadError::Cache(CacheError::Io(_)))
         ));
+    }
+}
+
+// ===========================================================================
+// Cache expiration — expires_at check in use case
+// ===========================================================================
+
+mod cache_expiration {
+    use super::*;
+
+    #[tokio::test]
+    async fn expired_cache_entry_falls_through_to_origin() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file())));
+        origin
+            .expect_fetch()
+            .times(1)
+            .returning(|_| Ok(make_origin_response()));
+        cache
+            .expect_begin_write()
+            .returning(|_| Ok(Box::new(make_writer())));
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let result = uc.execute("stale-file").await;
+
+        // then
+        assert!(matches!(result, Ok(DownloadAction::Miss { .. })));
+    }
+
+    #[tokio::test]
+    async fn non_expired_cache_entry_returns_hit() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_cached_file())));
+
+        let uc = make_use_case(cache, MockOriginClient::new());
+
+        // when
+        let action = uc.execute("fresh-file").await.unwrap();
+
+        // then
+        assert!(matches!(action, DownloadAction::Hit(_)));
     }
 }

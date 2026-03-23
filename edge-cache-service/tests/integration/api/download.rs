@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::stream;
@@ -46,6 +47,7 @@ async fn setup_with(origin: MockOriginClient) -> Env {
 
     let cache = CacheRepoImpl::new(CacheSettings {
         dir: cache_dir.to_str().unwrap().to_string(),
+        ttl: Duration::from_secs(3600),
     });
     let state = Arc::new(AppState {
         download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
@@ -395,5 +397,99 @@ mod errors {
         assert!(!env.cache_dir.join("broken.json.tmp").exists());
         assert!(!env.cache_dir.join("broken.bin").exists());
         assert!(!env.cache_dir.join("broken.json").exists());
+    }
+}
+
+// ===========================================================================
+// Expiration — TTL-based cache invalidation
+// ===========================================================================
+
+mod expired {
+    use super::*;
+
+    async fn setup_with_ttl(origin: MockOriginClient, ttl: Duration) -> Env {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache_dir = tmp.path().to_path_buf();
+
+        let cache = CacheRepoImpl::new(CacheSettings {
+            dir: cache_dir.to_str().unwrap().to_string(),
+            ttl,
+        });
+        let state = Arc::new(AppState {
+            download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
+        });
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app(state)).await.unwrap() });
+
+        Env {
+            base_url: format!("http://{addr}"),
+            cache_dir,
+            _tmp: tmp,
+        }
+    }
+
+    #[tokio::test]
+    async fn expired_entry_returns_miss() {
+        // given — TTL=0 means entries expire immediately
+        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(0)).await;
+        seed_cache(&env, "expiring").await;
+
+        // when — second request should be a MISS because TTL expired
+        let resp = get(&env, "expiring").send().await.unwrap();
+
+        // then
+        assert_eq!(resp.headers()["x-cache"], "MISS");
+    }
+
+    #[tokio::test]
+    async fn non_expired_entry_returns_hit() {
+        // given — generous TTL
+        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(3600)).await;
+        seed_cache(&env, "fresh").await;
+
+        // when
+        let resp = get(&env, "fresh").send().await.unwrap();
+
+        // then
+        assert_eq!(resp.headers()["x-cache"], "HIT");
+    }
+
+    #[tokio::test]
+    async fn legacy_meta_without_expires_at_treated_as_miss() {
+        // given — manually write a legacy meta file (no expires_at)
+        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(3600)).await;
+        let meta = serde_json::json!({
+            "content_type": "text/plain",
+            "content_length": 5
+        });
+        std::fs::write(
+            env.cache_dir.join("legacy.json"),
+            serde_json::to_vec(&meta).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(env.cache_dir.join("legacy.bin"), b"hello").unwrap();
+
+        // when
+        let resp = get(&env, "legacy").send().await.unwrap();
+
+        // then — should be MISS because no expires_at field
+        assert_eq!(resp.headers()["x-cache"], "MISS");
+    }
+
+    #[tokio::test]
+    async fn expired_entry_refreshes_from_origin() {
+        // given — TTL=0, seed cache, then second request fetches from origin again
+        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(0)).await;
+        seed_cache(&env, "refresh").await;
+
+        // when
+        let resp = get(&env, "refresh").send().await.unwrap();
+
+        // then — body comes from origin, not stale cache
+        assert_eq!(resp.headers()["x-cache"], "MISS");
+        let body = resp.bytes().await.unwrap();
+        assert_eq!(&body[..], b"content of refresh");
     }
 }
