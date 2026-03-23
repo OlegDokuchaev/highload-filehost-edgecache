@@ -11,7 +11,6 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 
 use crate::application::download::DownloadAction;
-use crate::ports::cache::CacheMeta;
 use crate::ports::cache::{CacheWriter, CachedFile};
 use crate::ports::origin::OriginResponse;
 
@@ -87,7 +86,6 @@ fn stream_and_cache(
             yield chunk;
         }
 
-        let meta = CacheMeta { content_type, content_length: written };
-        writer.commit(meta).await?;
+        writer.commit(content_type, written).await?;
     }
 }
