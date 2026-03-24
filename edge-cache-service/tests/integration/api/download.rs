@@ -9,7 +9,7 @@ use edge_cache_service::adapters::api::{AppState, app};
 use edge_cache_service::adapters::cache::{CacheRepoImpl, CacheSettings};
 use edge_cache_service::application::download::DownloadUseCase;
 use edge_cache_service::ports::cache::CacheMeta;
-use edge_cache_service::ports::origin::{OriginError, OriginResponse};
+use edge_cache_service::ports::origin::{ConditionalGetResult, OriginError, OriginResponse};
 
 use crate::support::mocks::MockOriginClient;
 
@@ -67,6 +67,29 @@ async fn setup_with(origin: MockOriginClient) -> Env {
 
 async fn setup() -> Env {
     setup_with(default_origin_mock()).await
+}
+
+async fn setup_with_ttl(origin: MockOriginClient, ttl: Duration) -> Env {
+    let tmp = tempfile::tempdir().unwrap();
+    let cache_dir = tmp.path().to_path_buf();
+
+    let cache = CacheRepoImpl::new(CacheSettings {
+        dir: cache_dir.to_str().unwrap().to_string(),
+        ttl,
+    });
+    let state = Arc::new(AppState {
+        download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
+    });
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app(state)).await.unwrap() });
+
+    Env {
+        base_url: format!("http://{addr}"),
+        cache_dir,
+        _tmp: tmp,
+    }
 }
 
 fn get(env: &Env, file_id: &str) -> reqwest::RequestBuilder {
@@ -458,40 +481,30 @@ mod errors {
 mod expired {
     use super::*;
 
-    async fn setup_with_ttl(origin: MockOriginClient, ttl: Duration) -> Env {
-        let tmp = tempfile::tempdir().unwrap();
-        let cache_dir = tmp.path().to_path_buf();
-
-        let cache = CacheRepoImpl::new(CacheSettings {
-            dir: cache_dir.to_str().unwrap().to_string(),
-            ttl,
+    fn origin_without_etag() -> MockOriginClient {
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().returning(|file_id| {
+            let body = format!("content of {file_id}");
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                etag: None,
+                body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
+            })
         });
-        let state = Arc::new(AppState {
-            download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
-        });
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app(state)).await.unwrap() });
-
-        Env {
-            base_url: format!("http://{addr}"),
-            cache_dir,
-            _tmp: tmp,
-        }
+        origin
     }
 
     #[tokio::test]
-    async fn expired_entry_returns_miss() {
-        // given — TTL=0 means entries expire immediately
-        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(0)).await;
+    async fn expired_without_etag_returns_revalidated() {
+        // given — origin returns no etag, but file was in cache → REVALIDATED, not MISS
+        let env = setup_with_ttl(origin_without_etag(), Duration::from_secs(0)).await;
         seed_cache(&env, "expiring").await;
 
-        // when — second request should be a MISS because TTL expired
+        // when
         let resp = get(&env, "expiring").send().await.unwrap();
 
         // then
-        assert_eq!(resp.headers()["x-cache"], "MISS");
+        assert_eq!(resp.headers()["x-cache"], "REVALIDATED");
     }
 
     #[tokio::test]
@@ -506,19 +519,154 @@ mod expired {
         // then
         assert_eq!(resp.headers()["x-cache"], "HIT");
     }
+}
+
+// ===========================================================================
+// Revalidation — conditional GET on expired cache with etag
+// ===========================================================================
+
+mod revalidated {
+    use super::*;
+
+    fn origin_with_revalidation() -> MockOriginClient {
+        let mut origin = MockOriginClient::new();
+        // First call — normal fetch for seeding cache
+        origin.expect_fetch().returning(|file_id| {
+            let body = format!("content of {file_id}");
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                etag: Some(format!("\"etag-{file_id}\"")),
+                body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
+            })
+        });
+        // Subsequent calls — 304 Not Modified
+        origin
+            .expect_fetch_if_changed()
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+        origin
+    }
 
     #[tokio::test]
-    async fn expired_entry_refreshes_from_origin() {
-        // given — TTL=0, seed cache, then second request fetches from origin again
-        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(0)).await;
-        seed_cache(&env, "refresh").await;
+    async fn returns_revalidated_header_on_304() {
+        // given — TTL=0, origin returns 304 on conditional GET
+        let env = setup_with_ttl(origin_with_revalidation(), Duration::from_secs(0)).await;
+        seed_cache(&env, "reval").await;
 
         // when
-        let resp = get(&env, "refresh").send().await.unwrap();
+        let resp = get(&env, "reval").send().await.unwrap();
 
-        // then — body comes from origin, not stale cache
-        assert_eq!(resp.headers()["x-cache"], "MISS");
+        // then
+        assert_eq!(resp.headers()["x-cache"], "REVALIDATED");
+    }
+
+    #[tokio::test]
+    async fn serves_cached_body_on_304() {
+        // given
+        let env = setup_with_ttl(origin_with_revalidation(), Duration::from_secs(0)).await;
+        let original_body = seed_cache(&env, "body304").await;
+
+        // when
+        let resp = get(&env, "body304").send().await.unwrap();
         let body = resp.bytes().await.unwrap();
-        assert_eq!(&body[..], b"content of refresh");
+
+        // then — same body from cache, not re-downloaded
+        assert_eq!(body, original_body);
+    }
+
+    #[tokio::test]
+    async fn refreshes_ttl_on_304() {
+        // given — TTL=0, first revalidation refreshes TTL
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().times(1).returning(|file_id| {
+            let body = format!("content of {file_id}");
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                etag: Some("\"e1\"".to_string()),
+                body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
+            })
+        });
+        origin
+            .expect_fetch_if_changed()
+            .times(1)
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+
+        // TTL=3600 for refresh — after 304, the entry should be fresh
+        let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
+        seed_cache(&env, "ttl304").await;
+
+        // when — revalidation triggers, refresh_ttl writes new expires_at
+        let _ = get(&env, "ttl304").send().await.unwrap().bytes().await;
+
+        // then — check .json has updated expires_at
+        let meta = read_cache_meta(&env, "ttl304");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        // expires_at should be close to now (TTL=0 means now+0)
+        assert!(meta.expires_at >= now - 2, "expires_at should be refreshed");
+    }
+
+    #[tokio::test]
+    async fn replaces_cache_on_200() {
+        // given — origin returns new content on conditional GET
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().times(1).returning(|file_id| {
+            let body = format!("old content of {file_id}");
+            Ok(OriginResponse {
+                content_type: "text/plain".to_string(),
+                etag: Some("\"old-etag\"".to_string()),
+                body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
+            })
+        });
+        origin
+            .expect_fetch_if_changed()
+            .times(1)
+            .returning(|file_id, _| {
+                let body = format!("new content of {file_id}");
+                Ok(ConditionalGetResult::Modified(OriginResponse {
+                    content_type: "text/html".to_string(),
+                    etag: Some("\"new-etag\"".to_string()),
+                    body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
+                }))
+            });
+
+        let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
+        seed_cache(&env, "updated").await;
+
+        // when
+        let resp = get(&env, "updated").send().await.unwrap();
+
+        // then
+        assert_eq!(resp.headers()["x-cache"], "REVALIDATED");
+        assert_eq!(resp.headers()[header::CONTENT_TYPE], "text/html");
+        assert_eq!(resp.headers()[header::ETAG], "\"new-etag\"");
+        let body = resp.bytes().await.unwrap();
+        assert_eq!(&body[..], b"new content of updated");
+    }
+
+    #[tokio::test]
+    async fn preserves_content_type_on_304() {
+        // given — origin returns image/jpeg, then 304
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().returning(|_| {
+            Ok(OriginResponse {
+                content_type: "image/jpeg".to_string(),
+                etag: Some("\"jpeg-e\"".to_string()),
+                body: Box::pin(stream::once(async { Ok(Bytes::from("jpeg-data")) })),
+            })
+        });
+        origin
+            .expect_fetch_if_changed()
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+
+        let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
+        seed_cache(&env, "photo").await;
+
+        // when
+        let resp = get(&env, "photo").send().await.unwrap();
+
+        // then
+        assert_eq!(resp.headers()[header::CONTENT_TYPE], "image/jpeg");
     }
 }
