@@ -128,7 +128,14 @@ func (r *FileRepository) UploadFile(
 	}
 
 	if err := r.db.saveMetadata(ctx, meta); err != nil {
-		slog.Error("failed to save metadata to MinIO", "error", err, "fileID", fileID)
+		slog.Error("failed to save metadata, attempting to delete uploaded object",
+			"error", err, "object", meta.ObjectName)
+
+		delErr := r.db.Client.RemoveObject(ctx, r.db.bucket, meta.ObjectName, minio.RemoveObjectOptions{})
+		if delErr != nil {
+			slog.Error("failed to delete orphaned object",
+				"error", delErr, "object", meta.ObjectName)
+		}
 		return nil, fmt.Errorf("save metadata: %w", err)
 	}
 
