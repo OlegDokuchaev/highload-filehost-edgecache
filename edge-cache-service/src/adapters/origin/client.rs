@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures_util::StreamExt;
 
-use crate::ports::origin::{OriginClient, OriginError, OriginResponse};
+use crate::ports::origin::{ConditionalGetResult, OriginClient, OriginError, OriginResponse};
 
 use super::OriginSettings;
 
@@ -18,15 +18,19 @@ impl OriginClientImpl {
             client,
         }
     }
-}
 
-#[async_trait]
-impl OriginClient for OriginClientImpl {
-    async fn fetch(&self, file_id: &str) -> Result<OriginResponse, OriginError> {
+    async fn send_get(
+        &self,
+        file_id: &str,
+        if_none_match: Option<&str>,
+    ) -> Result<reqwest::Response, OriginError> {
         let url = format!("{}/files/{}", self.base_url, file_id);
-        let resp = self
-            .client
-            .get(&url)
+        let mut req = self.client.get(&url);
+        if let Some(etag) = if_none_match {
+            req = req.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+
+        let resp = req
             .send()
             .await
             .map_err(|e| OriginError::Unavailable(e.into()))?;
@@ -34,13 +38,11 @@ impl OriginClient for OriginClientImpl {
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(OriginError::NotFound);
         }
-        if !resp.status().is_success() {
-            return Err(OriginError::Unavailable(anyhow::anyhow!(
-                "unexpected status {}",
-                resp.status()
-            )));
-        }
 
+        Ok(resp)
+    }
+
+    fn parse_success_response(resp: reqwest::Response) -> OriginResponse {
         let content_type = resp
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -59,10 +61,46 @@ impl OriginClient for OriginClientImpl {
                 .map(|r| r.map_err(std::io::Error::other)),
         );
 
-        Ok(OriginResponse {
+        OriginResponse {
             content_type,
             etag,
             body,
-        })
+        }
+    }
+
+    fn check_success(resp: &reqwest::Response) -> Result<(), OriginError> {
+        if !resp.status().is_success() {
+            return Err(OriginError::Unavailable(anyhow::anyhow!(
+                "unexpected status {}",
+                resp.status()
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl OriginClient for OriginClientImpl {
+    async fn fetch(&self, file_id: &str) -> Result<OriginResponse, OriginError> {
+        let resp = self.send_get(file_id, None).await?;
+        Self::check_success(&resp)?;
+        Ok(Self::parse_success_response(resp))
+    }
+
+    async fn fetch_if_changed(
+        &self,
+        file_id: &str,
+        etag: &str,
+    ) -> Result<ConditionalGetResult, OriginError> {
+        let resp = self.send_get(file_id, Some(etag)).await?;
+
+        if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(ConditionalGetResult::NotModified);
+        }
+        Self::check_success(&resp)?;
+
+        Ok(ConditionalGetResult::Modified(
+            Self::parse_success_response(resp),
+        ))
     }
 }
