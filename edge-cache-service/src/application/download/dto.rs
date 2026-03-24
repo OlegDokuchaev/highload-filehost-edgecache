@@ -7,4 +7,9 @@ pub enum DownloadAction {
         origin: OriginResponse,
         writer: Box<dyn CacheWriter>,
     },
+    Revalidated(CachedFile),
+    RevalidatedWithNewContent {
+        origin: OriginResponse,
+        writer: Box<dyn CacheWriter>,
+    },
 }
