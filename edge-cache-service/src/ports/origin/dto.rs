@@ -5,3 +5,8 @@ pub struct OriginResponse {
     pub etag: Option<String>,
     pub body: ByteStream,
 }
+
+pub enum ConditionalGetResult {
+    NotModified,
+    Modified(OriginResponse),
+}

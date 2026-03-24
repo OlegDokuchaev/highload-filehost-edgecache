@@ -23,8 +23,12 @@ pub async fn download(
 ) -> Result<Response<Body>, ApiError> {
     let action = state.download.execute(&file_id).await?;
     Ok(match action {
-        DownloadAction::Hit(cached) => serve_cached(cached),
-        DownloadAction::Miss { origin, writer } => serve_miss(origin, writer),
+        DownloadAction::Hit(cached) => serve_from_cache(cached, "HIT"),
+        DownloadAction::Revalidated(cached) => serve_from_cache(cached, "REVALIDATED"),
+        DownloadAction::Miss { origin, writer } => serve_from_origin(origin, writer, "MISS"),
+        DownloadAction::RevalidatedWithNewContent { origin, writer } => {
+            serve_from_origin(origin, writer, "REVALIDATED")
+        }
     })
 }
 
@@ -46,7 +50,7 @@ fn download_response(
     resp
 }
 
-fn serve_cached(cached: CachedFile) -> Response<Body> {
+fn serve_from_cache(cached: CachedFile, x_cache: &'static str) -> Response<Body> {
     let Ok(content_type) = HeaderValue::from_str(&cached.meta.content_type) else {
         return ApiError::internal().into_response();
     };
@@ -54,7 +58,12 @@ fn serve_cached(cached: CachedFile) -> Response<Body> {
         return ApiError::internal().into_response();
     };
 
-    let mut resp = download_response(Body::from_stream(cached.stream), "HIT", content_type, etag);
+    let mut resp = download_response(
+        Body::from_stream(cached.stream),
+        x_cache,
+        content_type,
+        etag,
+    );
     resp.headers_mut().insert(
         header::CONTENT_LENGTH,
         HeaderValue::from(cached.meta.content_length),
@@ -63,7 +72,11 @@ fn serve_cached(cached: CachedFile) -> Response<Body> {
     resp
 }
 
-fn serve_miss(origin: OriginResponse, writer: Box<dyn CacheWriter>) -> Response<Body> {
+fn serve_from_origin(
+    origin: OriginResponse,
+    writer: Box<dyn CacheWriter>,
+    x_cache: &'static str,
+) -> Response<Body> {
     let Ok(content_type) = HeaderValue::from_str(&origin.content_type) else {
         return ApiError::internal().into_response();
     };
@@ -72,7 +85,7 @@ fn serve_miss(origin: OriginResponse, writer: Box<dyn CacheWriter>) -> Response<
     };
 
     let body_stream = stream_and_cache(origin, writer);
-    download_response(Body::from_stream(body_stream), "MISS", content_type, etag)
+    download_response(Body::from_stream(body_stream), x_cache, content_type, etag)
 }
 
 fn try_parse_etag(etag: Option<&str>) -> Result<Option<HeaderValue>, header::InvalidHeaderValue> {

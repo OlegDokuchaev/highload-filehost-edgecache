@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use edge_cache_service::application::download::{DownloadAction, DownloadError, DownloadUseCase};
 use edge_cache_service::ports::cache::{CacheError, CacheMeta, CachedFile};
-use edge_cache_service::ports::origin::{OriginError, OriginResponse};
+use edge_cache_service::ports::origin::{ConditionalGetResult, OriginError, OriginResponse};
 use futures_util::stream;
 
 use crate::support::mocks::{MockCacheRepo, MockCacheWriter, MockOriginClient};
@@ -39,6 +39,18 @@ fn make_expired_cached_file() -> CachedFile {
             content_length: 1024,
             expires_at: now_unix() - 1,
             etag: None,
+        },
+        stream: Box::pin(stream::empty()),
+    }
+}
+
+fn make_expired_cached_file_with_etag() -> CachedFile {
+    CachedFile {
+        meta: CacheMeta {
+            content_type: "image/png".to_string(),
+            content_length: 1024,
+            expires_at: now_unix() - 1,
+            etag: Some("\"etag-123\"".to_string()),
         },
         stream: Box::pin(stream::empty()),
     }
@@ -149,7 +161,7 @@ mod cache_hit {
         // then
         match action {
             DownloadAction::Hit(f) => assert_eq!(f.meta.content_type, "image/png"),
-            DownloadAction::Miss { .. } => panic!("expected Hit, got Miss"),
+            _ => panic!("expected Hit"),
         }
     }
 
@@ -197,7 +209,7 @@ mod cache_hit {
                 assert_eq!(f.meta.content_type, "video/mp4");
                 assert_eq!(f.meta.content_length, 999_999);
             }
-            DownloadAction::Miss { .. } => panic!("expected Hit"),
+            _ => panic!("expected Hit"),
         }
     }
 }
@@ -237,7 +249,7 @@ mod cache_miss {
             DownloadAction::Miss { origin, .. } => {
                 assert_eq!(origin.content_type, "application/octet-stream");
             }
-            DownloadAction::Hit(_) => panic!("expected Miss, got Hit"),
+            _ => panic!("expected Miss"),
         }
     }
 
@@ -441,8 +453,8 @@ mod cache_expiration {
     use super::*;
 
     #[tokio::test]
-    async fn expired_cache_entry_falls_through_to_origin() {
-        // given
+    async fn expired_cache_entry_refetches_as_revalidated() {
+        // given — expired without etag → full re-fetch, REVALIDATED
         let mut cache = MockCacheRepo::new();
         let mut origin = MockOriginClient::new();
 
@@ -463,7 +475,10 @@ mod cache_expiration {
         let result = uc.execute("stale-file").await;
 
         // then
-        assert!(matches!(result, Ok(DownloadAction::Miss { .. })));
+        assert!(matches!(
+            result,
+            Ok(DownloadAction::RevalidatedWithNewContent { .. })
+        ));
     }
 
     #[tokio::test]
@@ -481,5 +496,169 @@ mod cache_expiration {
 
         // then
         assert!(matches!(action, DownloadAction::Hit(_)));
+    }
+}
+
+// ===========================================================================
+// Revalidation — conditional GET on expired cache with etag
+// ===========================================================================
+
+mod revalidation {
+    use super::*;
+
+    #[tokio::test]
+    async fn expired_with_etag_304_returns_revalidated() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        origin
+            .expect_fetch_if_changed()
+            .withf(|_, etag| etag == "\"etag-123\"")
+            .times(1)
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+        cache.expect_refresh_ttl().times(1).returning(|_| Ok(()));
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let action = uc.execute("stale").await.unwrap();
+
+        // then
+        assert!(matches!(action, DownloadAction::Revalidated(_)));
+    }
+
+    #[tokio::test]
+    async fn expired_with_etag_200_returns_revalidated_with_new_content() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        origin.expect_fetch_if_changed().returning(|_, _| {
+            Ok(ConditionalGetResult::Modified(OriginResponse {
+                content_type: "image/webp".to_string(),
+                etag: Some("\"new-etag\"".to_string()),
+                body: Box::pin(stream::empty()),
+            }))
+        });
+        cache
+            .expect_begin_write()
+            .returning(|_| Ok(Box::new(make_writer())));
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let action = uc.execute("changed").await.unwrap();
+
+        // then
+        assert!(matches!(
+            action,
+            DownloadAction::RevalidatedWithNewContent { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn expired_without_etag_returns_revalidated_with_new_content() {
+        // given — expired, no etag → full re-fetch, but still REVALIDATED (not MISS)
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file())));
+        origin.expect_fetch_if_changed().never();
+        origin
+            .expect_fetch()
+            .times(1)
+            .returning(|_| Ok(make_origin_response()));
+        cache
+            .expect_begin_write()
+            .returning(|_| Ok(Box::new(make_writer())));
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let action = uc.execute("no-etag").await.unwrap();
+
+        // then
+        assert!(matches!(
+            action,
+            DownloadAction::RevalidatedWithNewContent { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn revalidation_304_does_not_call_begin_write() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        origin
+            .expect_fetch_if_changed()
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+        cache.expect_refresh_ttl().returning(|_| Ok(()));
+        cache.expect_begin_write().never();
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let _ = uc.execute("no-write").await;
+    }
+
+    #[tokio::test]
+    async fn revalidation_200_does_not_call_refresh_ttl() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        origin
+            .expect_fetch_if_changed()
+            .returning(|_, _| Ok(ConditionalGetResult::Modified(make_origin_response())));
+        cache.expect_refresh_ttl().never();
+        cache
+            .expect_begin_write()
+            .returning(|_| Ok(Box::new(make_writer())));
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let _ = uc.execute("new-content").await;
+    }
+
+    #[tokio::test]
+    async fn revalidation_origin_error_propagates() {
+        // given
+        let mut cache = MockCacheRepo::new();
+        let mut origin = MockOriginClient::new();
+
+        cache
+            .expect_lookup()
+            .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        origin
+            .expect_fetch_if_changed()
+            .returning(|_, _| Err(OriginError::Unavailable(anyhow::anyhow!("timeout"))));
+
+        let uc = make_use_case(cache, origin);
+
+        // when
+        let result = uc.execute("err").await;
+
+        // then
+        assert!(matches!(
+            result,
+            Err(DownloadError::Origin(OriginError::Unavailable(_)))
+        ));
     }
 }
