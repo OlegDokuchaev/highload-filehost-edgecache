@@ -48,11 +48,21 @@ impl OriginClient for OriginClientImpl {
             .unwrap_or("application/octet-stream")
             .to_string();
 
+        let etag = resp
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+
         let body = Box::pin(
             resp.bytes_stream()
                 .map(|r| r.map_err(std::io::Error::other)),
         );
 
-        Ok(OriginResponse { content_type, body })
+        Ok(OriginResponse {
+            content_type,
+            etag,
+            body,
+        })
     }
 }

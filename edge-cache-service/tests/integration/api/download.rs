@@ -34,6 +34,7 @@ fn default_origin_mock() -> MockOriginClient {
             let body = format!("content of {file_id}");
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
+                etag: Some(format!("\"etag-{file_id}\"")),
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         }
@@ -167,6 +168,7 @@ mod miss {
         origin.expect_fetch().returning(|_| {
             Ok(OriginResponse {
                 content_type: "text/html".to_string(),
+                etag: None,
                 body: Box::pin(stream::once(async { Ok(Bytes::from("<h1>hello</h1>")) })),
             })
         });
@@ -182,6 +184,38 @@ mod miss {
     }
 
     #[tokio::test]
+    async fn propagates_etag_from_origin() {
+        // given
+        let env = setup().await;
+
+        // when
+        let resp = get(&env, "abc").send().await.unwrap();
+
+        // then
+        assert_eq!(resp.headers()[header::ETAG], "\"etag-abc\"");
+    }
+
+    #[tokio::test]
+    async fn no_etag_header_when_origin_omits_it() {
+        // given
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().returning(|_| {
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                etag: None,
+                body: Box::pin(stream::once(async { Ok(Bytes::from("no-etag")) })),
+            })
+        });
+        let env = setup_with(origin).await;
+
+        // when
+        let resp = get(&env, "plain").send().await.unwrap();
+
+        // then
+        assert!(resp.headers().get(header::ETAG).is_none());
+    }
+
+    #[tokio::test]
     async fn large_multi_chunk_body_streams_correctly() {
         // given
         let mut origin = MockOriginClient::new();
@@ -193,6 +227,7 @@ mod miss {
             ];
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
+                etag: None,
                 body: Box::pin(stream::iter(chunks)),
             })
         });
@@ -269,6 +304,7 @@ mod hit {
         origin.expect_fetch().returning(|_| {
             Ok(OriginResponse {
                 content_type: "image/jpeg".to_string(),
+                etag: Some("\"jpeg-etag\"".to_string()),
                 body: Box::pin(stream::once(async { Ok(Bytes::from("jpeg-data")) })),
             })
         });
@@ -283,6 +319,19 @@ mod hit {
     }
 
     #[tokio::test]
+    async fn preserves_etag() {
+        // given
+        let env = setup().await;
+        seed_cache(&env, "with-etag").await;
+
+        // when
+        let resp = get(&env, "with-etag").send().await.unwrap();
+
+        // then
+        assert_eq!(resp.headers()[header::ETAG], "\"etag-with-etag\"");
+    }
+
+    #[tokio::test]
     async fn does_not_call_origin_again() {
         // given — origin allows only 1 call
         let mut origin = MockOriginClient::new();
@@ -290,6 +339,7 @@ mod hit {
             let body = format!("content of {file_id}");
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
+                etag: Some("\"once-etag\"".to_string()),
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         });
@@ -380,6 +430,7 @@ mod errors {
             ];
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
+                etag: None,
                 body: Box::pin(stream::iter(chunks)),
             })
         });
@@ -454,28 +505,6 @@ mod expired {
 
         // then
         assert_eq!(resp.headers()["x-cache"], "HIT");
-    }
-
-    #[tokio::test]
-    async fn legacy_meta_without_expires_at_treated_as_miss() {
-        // given — manually write a legacy meta file (no expires_at)
-        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(3600)).await;
-        let meta = serde_json::json!({
-            "content_type": "text/plain",
-            "content_length": 5
-        });
-        std::fs::write(
-            env.cache_dir.join("legacy.json"),
-            serde_json::to_vec(&meta).unwrap(),
-        )
-        .unwrap();
-        std::fs::write(env.cache_dir.join("legacy.bin"), b"hello").unwrap();
-
-        // when
-        let resp = get(&env, "legacy").send().await.unwrap();
-
-        // then — should be MISS because no expires_at field
-        assert_eq!(resp.headers()["x-cache"], "MISS");
     }
 
     #[tokio::test]

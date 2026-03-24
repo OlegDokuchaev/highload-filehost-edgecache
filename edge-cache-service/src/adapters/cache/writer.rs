@@ -17,6 +17,7 @@ pub struct CacheWriterImpl {
     final_meta: PathBuf,
     committed: bool,
     ttl: Duration,
+    written: u64,
 }
 
 impl CacheWriterImpl {
@@ -34,6 +35,7 @@ impl CacheWriterImpl {
             final_meta: meta_path(cache_dir, file_id),
             committed: false,
             ttl,
+            written: 0,
         }
     }
 }
@@ -42,13 +44,14 @@ impl CacheWriterImpl {
 impl CacheWriter for CacheWriterImpl {
     async fn write_chunk(&mut self, chunk: &[u8]) -> Result<(), CacheError> {
         self.file.write_all(chunk).await?;
+        self.written += chunk.len() as u64;
         Ok(())
     }
 
     async fn commit(
         mut self: Box<Self>,
         content_type: String,
-        content_length: u64,
+        etag: Option<String>,
     ) -> Result<(), CacheError> {
         tokio::fs::rename(&self.tmp_data, &self.final_data).await?;
 
@@ -56,8 +59,9 @@ impl CacheWriter for CacheWriterImpl {
 
         let meta = CacheMeta {
             content_type,
-            content_length,
+            content_length: self.written,
             expires_at: now + self.ttl.as_secs() as i64,
+            etag,
         };
         let data = serde_json::to_vec(&meta)?;
         tokio::fs::write(&self.tmp_meta, data).await?;

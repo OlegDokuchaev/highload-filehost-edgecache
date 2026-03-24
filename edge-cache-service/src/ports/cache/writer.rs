@@ -7,6 +7,6 @@ pub trait CacheWriter: Send {
     async fn commit(
         self: Box<Self>,
         content_type: String,
-        content_length: u64,
+        etag: Option<String>,
     ) -> Result<(), CacheError>;
 }

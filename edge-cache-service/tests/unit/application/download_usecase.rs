@@ -26,6 +26,7 @@ fn make_cached_file() -> CachedFile {
             content_type: "image/png".to_string(),
             content_length: 1024,
             expires_at: now_unix() + 3600,
+            etag: None,
         },
         stream: Box::pin(stream::empty()),
     }
@@ -37,6 +38,7 @@ fn make_expired_cached_file() -> CachedFile {
             content_type: "image/png".to_string(),
             content_length: 1024,
             expires_at: now_unix() - 1,
+            etag: None,
         },
         stream: Box::pin(stream::empty()),
     }
@@ -45,6 +47,7 @@ fn make_expired_cached_file() -> CachedFile {
 fn make_origin_response() -> OriginResponse {
     OriginResponse {
         content_type: "application/octet-stream".to_string(),
+        etag: None,
         body: Box::pin(stream::empty()),
     }
 }
@@ -177,6 +180,7 @@ mod cache_hit {
                     content_type: "video/mp4".to_string(),
                     content_length: 999_999,
                     expires_at: now_unix() + 3600,
+                    etag: Some("\"abc123\"".to_string()),
                 },
                 stream: Box::pin(stream::empty()),
             }))

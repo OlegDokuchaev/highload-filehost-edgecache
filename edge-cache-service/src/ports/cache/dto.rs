@@ -7,6 +7,7 @@ pub struct CacheMeta {
     pub content_type: String,
     pub content_length: u64,
     pub expires_at: i64,
+    pub etag: Option<String>,
 }
 
 pub struct CachedFile {
