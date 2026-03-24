@@ -1,3 +1,5 @@
+use std::time::SystemTimeError;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -7,6 +9,9 @@ pub enum CacheError {
 
     #[error("corrupted cache metadata: {0}")]
     CorruptedMeta(#[from] serde_json::Error),
+
+    #[error("system clock error: {0}")]
+    Clock(#[from] SystemTimeError),
 }
 
 /// Allows `?` inside `try_stream!` where the stream error type is `io::Error`.

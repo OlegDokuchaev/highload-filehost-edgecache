@@ -1,9 +1,13 @@
+use std::time::Duration;
+
 use config::{Config, Environment};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct CacheSettings {
     pub dir: String,
+    #[serde(with = "humantime_serde")]
+    pub ttl: Duration,
 }
 
 impl CacheSettings {

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use tokio::io::AsyncWriteExt;
@@ -15,10 +16,17 @@ pub struct CacheWriterImpl {
     tmp_meta: PathBuf,
     final_meta: PathBuf,
     committed: bool,
+    ttl: Duration,
+    written: u64,
 }
 
 impl CacheWriterImpl {
-    pub(super) fn new(file: tokio::fs::File, cache_dir: &std::path::Path, file_id: &str) -> Self {
+    pub(super) fn new(
+        file: tokio::fs::File,
+        cache_dir: &std::path::Path,
+        file_id: &str,
+        ttl: Duration,
+    ) -> Self {
         Self {
             file,
             tmp_data: tmp_data_path(cache_dir, file_id),
@@ -26,6 +34,8 @@ impl CacheWriterImpl {
             tmp_meta: tmp_meta_path(cache_dir, file_id),
             final_meta: meta_path(cache_dir, file_id),
             committed: false,
+            ttl,
+            written: 0,
         }
     }
 }
@@ -34,12 +44,25 @@ impl CacheWriterImpl {
 impl CacheWriter for CacheWriterImpl {
     async fn write_chunk(&mut self, chunk: &[u8]) -> Result<(), CacheError> {
         self.file.write_all(chunk).await?;
+        self.written += chunk.len() as u64;
         Ok(())
     }
 
-    async fn commit(mut self: Box<Self>, meta: CacheMeta) -> Result<(), CacheError> {
+    async fn commit(
+        mut self: Box<Self>,
+        content_type: String,
+        etag: Option<String>,
+    ) -> Result<(), CacheError> {
         tokio::fs::rename(&self.tmp_data, &self.final_data).await?;
 
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+
+        let meta = CacheMeta {
+            content_type,
+            content_length: self.written,
+            expires_at: now + self.ttl.as_secs() as i64,
+            etag,
+        };
         let data = serde_json::to_vec(&meta)?;
         tokio::fs::write(&self.tmp_meta, data).await?;
         tokio::fs::rename(&self.tmp_meta, &self.final_meta).await?;

@@ -1,10 +1,10 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio_util::io::ReaderStream;
 
-use crate::ports::cache::CacheMeta;
-use crate::ports::cache::{CacheError, CacheRepo, CacheWriter, CachedFile};
+use crate::ports::cache::{CacheError, CacheMeta, CacheRepo, CacheWriter, CachedFile};
 
 use super::CacheSettings;
 use super::paths::{data_path, meta_path, tmp_data_path};
@@ -13,12 +13,14 @@ use super::writer::CacheWriterImpl;
 #[derive(Clone)]
 pub struct CacheRepoImpl {
     cache_dir: PathBuf,
+    ttl: Duration,
 }
 
 impl CacheRepoImpl {
     pub fn new(settings: CacheSettings) -> Self {
         Self {
             cache_dir: PathBuf::from(settings.dir),
+            ttl: settings.ttl,
         }
     }
 }
@@ -51,6 +53,7 @@ impl CacheRepo for CacheRepoImpl {
             file,
             &self.cache_dir,
             file_id,
+            self.ttl,
         )))
     }
 }

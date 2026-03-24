@@ -1,6 +1,7 @@
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::ports::cache::CacheRepo;
+use crate::ports::cache::{CacheMeta, CacheRepo};
 use crate::ports::origin::OriginClient;
 
 use super::{DownloadAction, DownloadError};
@@ -22,7 +23,9 @@ impl DownloadUseCase {
 
         // HIT — cache errors are treated as a miss (graceful degradation).
         if let Ok(Some(cached)) = self.cache.lookup(file_id).await {
-            return Ok(DownloadAction::Hit(cached));
+            if !is_expired(&cached.meta) {
+                return Ok(DownloadAction::Hit(cached));
+            }
         }
 
         // MISS — fetch from origin, `?` auto-converts via #[from].
@@ -43,4 +46,12 @@ fn is_valid_file_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+}
+
+fn is_expired(meta: &CacheMeta) -> bool {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    now >= meta.expires_at
 }

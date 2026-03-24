@@ -11,7 +11,6 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 
 use crate::application::download::DownloadAction;
-use crate::ports::cache::CacheMeta;
 use crate::ports::cache::{CacheWriter, CachedFile};
 use crate::ports::origin::OriginResponse;
 
@@ -33,12 +32,16 @@ fn download_response(
     body: Body,
     x_cache: &'static str,
     content_type: HeaderValue,
+    etag: Option<HeaderValue>,
 ) -> Response<Body> {
     let mut resp = Response::new(body);
 
     let h = resp.headers_mut();
     h.insert("x-cache", HeaderValue::from_static(x_cache));
     h.insert(header::CONTENT_TYPE, content_type);
+    if let Some(val) = etag {
+        h.insert(header::ETAG, val);
+    }
 
     resp
 }
@@ -47,8 +50,11 @@ fn serve_cached(cached: CachedFile) -> Response<Body> {
     let Ok(content_type) = HeaderValue::from_str(&cached.meta.content_type) else {
         return ApiError::internal().into_response();
     };
+    let Ok(etag) = try_parse_etag(cached.meta.etag.as_deref()) else {
+        return ApiError::internal().into_response();
+    };
 
-    let mut resp = download_response(Body::from_stream(cached.stream), "HIT", content_type);
+    let mut resp = download_response(Body::from_stream(cached.stream), "HIT", content_type, etag);
     resp.headers_mut().insert(
         header::CONTENT_LENGTH,
         HeaderValue::from(cached.meta.content_length),
@@ -61,9 +67,16 @@ fn serve_miss(origin: OriginResponse, writer: Box<dyn CacheWriter>) -> Response<
     let Ok(content_type) = HeaderValue::from_str(&origin.content_type) else {
         return ApiError::internal().into_response();
     };
+    let Ok(etag) = try_parse_etag(origin.etag.as_deref()) else {
+        return ApiError::internal().into_response();
+    };
 
     let body_stream = stream_and_cache(origin, writer);
-    download_response(Body::from_stream(body_stream), "MISS", content_type)
+    download_response(Body::from_stream(body_stream), "MISS", content_type, etag)
+}
+
+fn try_parse_etag(etag: Option<&str>) -> Result<Option<HeaderValue>, header::InvalidHeaderValue> {
+    etag.map(HeaderValue::from_str).transpose()
 }
 
 /// Tees the origin byte stream: yields chunks to the client while writing them
@@ -76,18 +89,15 @@ fn stream_and_cache(
 ) -> impl futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send {
     let mut body = origin.body;
     let content_type = origin.content_type;
+    let etag = origin.etag;
 
     try_stream! {
-        let mut written = 0;
-
         while let Some(chunk) = body.next().await {
             let chunk = chunk?;
-            written += chunk.len() as u64;
             writer.write_chunk(&chunk).await?;
             yield chunk;
         }
 
-        let meta = CacheMeta { content_type, content_length: written };
-        writer.commit(meta).await?;
+        writer.commit(content_type, etag).await?;
     }
 }
