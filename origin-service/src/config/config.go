@@ -28,6 +28,7 @@ type AppConfig struct {
 	MinioUseSSL        bool   `yaml:"minio_use_ssl"`
 	DownloadBaseURL    string `yaml:"download_base_url"`
 	DownloadURLExpiry  int    `yaml:"download_url_expiry"`
+	AuthVerifyURL      string `yaml:"auth_verify_url"`
 }
 
 func Load(path string) (*Config, error) {
