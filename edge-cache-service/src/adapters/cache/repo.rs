@@ -1,14 +1,13 @@
+use super::CacheSettings;
+use super::paths::{data_path, lock_path, meta_path, tmp_data_path, tmp_meta_path};
+use super::writer::CacheWriterImpl;
+use crate::ports::cache::{CacheError, CacheLock, CacheMeta, CacheRepo, CacheWriter, CachedFile};
+use async_trait::async_trait;
+use fs4::tokio::AsyncFileExt;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use async_trait::async_trait;
+use tokio::fs::OpenOptions;
 use tokio_util::io::ReaderStream;
-
-use crate::ports::cache::{CacheError, CacheMeta, CacheRepo, CacheWriter, CachedFile};
-
-use super::CacheSettings;
-use super::paths::{data_path, meta_path, tmp_data_path, tmp_meta_path};
-use super::writer::CacheWriterImpl;
 
 #[derive(Clone)]
 pub struct CacheRepoImpl {
@@ -71,5 +70,26 @@ impl CacheRepo for CacheRepoImpl {
         tokio::fs::rename(&tmp, &meta_file).await?;
 
         Ok(())
+    }
+
+    async fn acquire_lock(&self, file_id: &str) -> Result<CacheLock, CacheError> {
+        let path = lock_path(&self.cache_dir, file_id);
+
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)
+            .await
+            .map_err(CacheError::Io)?;
+
+        let file = tokio::task::spawn_blocking(move || -> Result<_, std::io::Error> {
+            file.lock_exclusive()?;
+            Ok(file)
+        })
+        .await
+        .map_err(|e| CacheError::Io(e.into()))??;
+
+        Ok(CacheLock::new(file))
     }
 }
