@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use edge_cache_service::application::download::{DownloadAction, DownloadError, DownloadUseCase};
-use edge_cache_service::ports::cache::{CacheError, CacheMeta, CachedFile};
+use edge_cache_service::ports::cache::{CacheError, CacheLock, CacheMeta, CachedFile};
 use edge_cache_service::ports::origin::{ConditionalGetResult, OriginError, OriginResponse};
 use futures_util::stream;
 
@@ -68,6 +68,10 @@ fn make_writer() -> MockCacheWriter {
     MockCacheWriter::new()
 }
 
+fn mock_lock() -> CacheLock {
+    CacheLock::new(tokio::fs::File::from_std(tempfile::tempfile().unwrap()))
+}
+
 fn make_use_case(cache: MockCacheRepo, origin: MockOriginClient) -> DownloadUseCase {
     DownloadUseCase::new(Arc::new(cache), Arc::new(origin))
 }
@@ -78,12 +82,13 @@ fn use_case_bare() -> DownloadUseCase {
 }
 
 /// Pre-configured mocks for the standard MISS path:
-/// lookup → None, fetch → Ok, begin_write → Ok.
+/// lookup → None (x2), acquire_lock → Ok, fetch → Ok, begin_write → Ok.
 fn mocks_for_miss() -> (MockCacheRepo, MockOriginClient) {
     let mut cache = MockCacheRepo::new();
     let mut origin = MockOriginClient::new();
 
     cache.expect_lookup().returning(|_| Ok(None));
+    cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
     origin
         .expect_fetch()
         .returning(|_| Ok(make_origin_response()));
@@ -137,7 +142,7 @@ mod validation {
 }
 
 // ===========================================================================
-// Cache HIT
+// Cache HIT — fast path, no lock
 // ===========================================================================
 
 mod cache_hit {
@@ -215,7 +220,7 @@ mod cache_hit {
 }
 
 // ===========================================================================
-// Cache MISS — normal flow
+// Cache MISS — normal flow (with lock)
 // ===========================================================================
 
 mod cache_miss {
@@ -228,6 +233,7 @@ mod cache_miss {
         let mut origin = MockOriginClient::new();
 
         cache.expect_lookup().returning(|_| Ok(None));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .withf(|id| id == "new-file")
@@ -286,6 +292,7 @@ mod graceful_degradation {
                 "disk error",
             )))
         });
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .times(1)
@@ -313,6 +320,7 @@ mod graceful_degradation {
             let serde_err = serde_json::from_str::<serde_json::Value>("not json").unwrap_err();
             Err(CacheError::CorruptedMeta(serde_err))
         });
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .times(1)
@@ -345,6 +353,7 @@ mod origin_errors {
         let mut origin = MockOriginClient::new();
 
         cache.expect_lookup().returning(|_| Ok(None));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .returning(|_| Err(OriginError::NotFound));
@@ -368,6 +377,7 @@ mod origin_errors {
         let mut origin = MockOriginClient::new();
 
         cache.expect_lookup().returning(|_| Ok(None));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin.expect_fetch().returning(|_| {
             Err(OriginError::Unavailable(anyhow::anyhow!(
                 "connection refused"
@@ -396,6 +406,7 @@ mod origin_errors {
         let mut origin = MockOriginClient::new();
 
         cache.expect_lookup().returning(|_| Ok(None));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .returning(|_| Err(OriginError::NotFound));
@@ -422,6 +433,7 @@ mod cache_write_errors {
         let mut origin = MockOriginClient::new();
 
         cache.expect_lookup().returning(|_| Ok(None));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .returning(|_| Ok(make_origin_response()));
@@ -461,6 +473,7 @@ mod cache_expiration {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch()
             .times(1)
@@ -483,7 +496,7 @@ mod cache_expiration {
 
     #[tokio::test]
     async fn non_expired_cache_entry_returns_hit() {
-        // given
+        // given — fresh, no lock needed
         let mut cache = MockCacheRepo::new();
         cache
             .expect_lookup()
@@ -515,6 +528,7 @@ mod revalidation {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch_if_changed()
             .withf(|_, etag| etag == "\"etag-123\"")
@@ -540,6 +554,7 @@ mod revalidation {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin.expect_fetch_if_changed().returning(|_, _| {
             Ok(ConditionalGetResult::Modified(OriginResponse {
                 content_type: "image/webp".to_string(),
@@ -572,6 +587,7 @@ mod revalidation {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin.expect_fetch_if_changed().never();
         origin
             .expect_fetch()
@@ -602,6 +618,7 @@ mod revalidation {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch_if_changed()
             .returning(|_, _| Ok(ConditionalGetResult::NotModified));
@@ -623,6 +640,7 @@ mod revalidation {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch_if_changed()
             .returning(|_, _| Ok(ConditionalGetResult::Modified(make_origin_response())));
@@ -646,6 +664,7 @@ mod revalidation {
         cache
             .expect_lookup()
             .returning(|_| Ok(Some(make_expired_cached_file_with_etag())));
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch_if_changed()
             .returning(|_, _| Err(OriginError::Unavailable(anyhow::anyhow!("timeout"))));
@@ -660,5 +679,41 @@ mod revalidation {
             result,
             Err(DownloadError::Origin(OriginError::Unavailable(_)))
         ));
+    }
+}
+
+// ===========================================================================
+// Coalescing — double-checked locking
+// ===========================================================================
+
+mod coalescing {
+    use super::*;
+
+    #[tokio::test]
+    async fn waiter_gets_hit_after_leader_populates_cache() {
+        // given — first lookup: miss, second lookup (after lock): hit
+        let mut cache = MockCacheRepo::new();
+        let call = Arc::new(std::sync::Mutex::new(0u32));
+        let call_clone = call.clone();
+
+        cache.expect_lookup().returning(move |_| {
+            let mut n = call_clone.lock().unwrap();
+            *n += 1;
+            if *n == 1 {
+                Ok(None) // first check: miss
+            } else {
+                Ok(Some(make_cached_file())) // double-check: hit (leader populated)
+            }
+        });
+        cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
+
+        let uc = make_use_case(cache, MockOriginClient::new());
+
+        // when
+        let action = uc.execute("coalesced").await.unwrap();
+
+        // then — should be HIT, not MISS
+        assert!(matches!(action, DownloadAction::Hit(_)));
+        assert_eq!(*call.lock().unwrap(), 2);
     }
 }
