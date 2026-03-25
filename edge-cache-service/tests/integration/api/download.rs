@@ -670,3 +670,58 @@ mod revalidated {
         assert_eq!(resp.headers()[header::CONTENT_TYPE], "image/jpeg");
     }
 }
+
+// ===========================================================================
+// Coalescing — concurrent requests share a single origin fetch
+// ===========================================================================
+
+mod coalescing {
+    use super::*;
+
+    #[tokio::test]
+    async fn concurrent_requests_only_fetch_origin_once() {
+        // given — origin allows exactly 1 fetch, with a delay to ensure overlap
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().times(1).returning(|file_id| {
+            let body = format!("content of {file_id}");
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                etag: Some("\"e1\"".to_string()),
+                body: Box::pin(async_stream::stream! {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    yield Ok(Bytes::from(body));
+                }),
+            })
+        });
+        // fetch_if_changed should not be called — file is not in cache at all
+        origin.expect_fetch_if_changed().never();
+
+        let env = setup_with(origin).await;
+
+        // when — fire 5 concurrent requests for the same file
+        let futs: Vec<_> = (0..5)
+            .map(|_| {
+                let url = format!("{}/download/coalesce-test", env.base_url);
+                async move {
+                    let resp = reqwest::get(&url).await.unwrap();
+                    let x_cache = resp.headers()["x-cache"].to_str().unwrap().to_string();
+                    let body = resp.bytes().await.unwrap();
+                    (x_cache, body)
+                }
+            })
+            .collect();
+
+        let results = futures_util::future::join_all(futs).await;
+
+        // then — all succeed with correct body
+        for (_, body) in &results {
+            assert_eq!(&body[..], b"content of coalesce-test");
+        }
+
+        // exactly 1 MISS, rest are HITs
+        let miss_count = results.iter().filter(|(x, _)| x == "MISS").count();
+        let hit_count = results.iter().filter(|(x, _)| x == "HIT").count();
+        assert_eq!(miss_count, 1, "expected exactly 1 MISS");
+        assert_eq!(hit_count, 4, "expected 4 HITs");
+    }
+}
