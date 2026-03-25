@@ -1,4 +1,4 @@
-use crate::ports::cache::{CacheWriter, CachedFile};
+use crate::ports::cache::{CacheLock, CacheWriter, CachedFile};
 use crate::ports::origin::OriginResponse;
 
 pub enum DownloadAction {
@@ -6,10 +6,12 @@ pub enum DownloadAction {
     Miss {
         origin: OriginResponse,
         writer: Box<dyn CacheWriter>,
+        lock: CacheLock,
     },
     Revalidated(CachedFile),
     RevalidatedWithNewContent {
         origin: OriginResponse,
         writer: Box<dyn CacheWriter>,
+        lock: CacheLock,
     },
 }

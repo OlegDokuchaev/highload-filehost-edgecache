@@ -14,3 +14,14 @@ pub struct CachedFile {
     pub meta: CacheMeta,
     pub stream: ByteStream,
 }
+
+/// Advisory file lock guard. Releasing happens automatically when dropped (fd close).
+pub struct CacheLock {
+    _file: tokio::fs::File,
+}
+
+impl CacheLock {
+    pub fn new(file: tokio::fs::File) -> Self {
+        Self { _file: file }
+    }
+}
