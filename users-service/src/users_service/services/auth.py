@@ -57,8 +57,15 @@ class AuthService:
                 # Результат игнорируется.
                 self._security.verify_password(password, self._security.dummy_password_hash)
                 raise InvalidCredentialsError("invalid credentials")
-            if not self._security.verify_password(password, user.password_hash):
+            ok, updated_hash = self._security.verify_password_and_update(
+                password,
+                user.password_hash,
+            )
+            if not ok:
                 raise InvalidCredentialsError("invalid credentials")
+            if updated_hash is not None:
+                await repo.update_password_hash(user_id=user.id, password_hash=updated_hash)
+                await session.commit()
 
             token = self._security.create_access_token(
                 user_id=user.id,

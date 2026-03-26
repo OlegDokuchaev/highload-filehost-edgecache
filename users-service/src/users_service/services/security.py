@@ -14,9 +14,13 @@ from users_service.domain.password_policy import validate_password_policy
 class SecurityService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        # ЧИСТЫЙ режим: только argon2id (argon2), без legacy-алгоритмов.
-        # Это значит, что все старые pbkdf2/bcrypt-хеши должны быть удалены вместе с БД.
-        self._pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+        # Безопасная staged-миграция:
+        # - новые хеши создаются как argon2id;
+        # - legacy pbkdf2_sha256 принимается как deprecated и rehash-ится при логине.
+        self._pwd_context = CryptContext(
+            schemes=["argon2", "pbkdf2_sha256"],
+            deprecated=["pbkdf2_sha256"],
+        )
         # Фиксированный dummy-хеш для выравнивания времени ответа при /auth/login
         # (когда пользователь не найден). Хеш считается один раз на запуск.
         self._dummy_password_hash = self._pwd_context.hash("dummy-password")
@@ -33,6 +37,14 @@ class SecurityService:
 
     def verify_password(self, plain_password: str, password_hash: str) -> bool:
         return self._pwd_context.verify(plain_password, password_hash)
+
+    def verify_password_and_update(
+        self,
+        plain_password: str,
+        password_hash: str,
+    ) -> tuple[bool, str | None]:
+        """Return (ok, updated_hash). updated_hash != None => persist rehashed value."""
+        return self._pwd_context.verify_and_update(plain_password, password_hash)
 
     @property
     def dummy_password_hash(self) -> str:

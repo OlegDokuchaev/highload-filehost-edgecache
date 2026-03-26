@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from users_service.db.models import User
@@ -36,3 +36,11 @@ class UserRepository:
             raise UniqueConstraintViolationError("unique constraint violation") from exc
         await self._session.refresh(user)
         return user
+
+    async def update_password_hash(self, *, user_id: object, password_hash: str) -> None:
+        """Update password hash; DB errors stay mapped at repository layer."""
+        stmt = update(User).where(User.id == user_id).values(password_hash=password_hash)
+        try:
+            await self._session.execute(stmt)
+        except IntegrityError as exc:
+            raise UniqueConstraintViolationError("unique constraint violation") from exc
