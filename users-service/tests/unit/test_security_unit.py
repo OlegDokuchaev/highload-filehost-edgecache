@@ -56,7 +56,7 @@ def test_hash_and_verify_password() -> None:
     assert not security.verify_password("WrongPass!1", password_hash)
 
 
-def test_password_hash_uses_bcrypt_scheme() -> None:
+def test_password_hash_uses_argon2_scheme() -> None:
     security = _security_service()
     password_hash = security.hash_password("VeryStrongPass!1")
     assert password_hash.startswith("$argon2")
