@@ -100,7 +100,8 @@ async def test_concurrent_register_same_login(
 ) -> None:
     db_file = tmp_path / "concurrent_users.db"
     monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
-    monkeypatch.setenv("USERS_JWT_SECRET", "concurrent-secret")
+    # 32+ bytes to avoid PyJWT InsecureKeyLengthWarning in tests
+    monkeypatch.setenv("USERS_JWT_SECRET", "concurrent-secret-32-bytes-minimum-123")
 
     app = create_app()
     await create_tables(app.state.container.engine())
@@ -127,7 +128,8 @@ def test_verify_expired_token_returns_active_false(
 ) -> None:
     db_file = tmp_path / "expired_users.db"
     monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
-    monkeypatch.setenv("USERS_JWT_SECRET", "expired-secret")
+    # 32+ bytes to avoid PyJWT InsecureKeyLengthWarning in tests
+    monkeypatch.setenv("USERS_JWT_SECRET", "expired-secret-32-bytes-minimum-12345")
 
     app = create_app()
     asyncio.run(create_tables(app.state.container.engine()))

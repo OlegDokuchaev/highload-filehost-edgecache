@@ -9,7 +9,7 @@ from users_service.services.security import SecurityService
 
 def _security_service() -> SecurityService:
     settings = Settings(
-        jwt_secret="unit-secret",
+        jwt_secret="unit-secret-32-bytes-minimum-123456",
         access_token_expire_minutes=30,
     )
     return SecurityService(settings=settings)

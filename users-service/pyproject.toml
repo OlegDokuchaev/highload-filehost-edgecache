@@ -40,6 +40,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
 asyncio_mode = "auto"
+filterwarnings = [
+  # passlib/argon2-cffi internal deprecation warning; doesn't affect correctness
+  "ignore:Accessing argon2\\.__version__ is deprecated:DeprecationWarning:passlib\\.handlers\\.argon2",
+]
 markers = [
   "unit: unit-level tests",
   "integration: integration-level tests",

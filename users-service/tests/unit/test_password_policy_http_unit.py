@@ -47,7 +47,8 @@ def test_unhandled_password_policy_error_returns_400_via_test_client(
     """Имитация вызова сервиса в обход локального try/except в роуте."""
     db_file = tmp_path / "test_users.db"
     monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
-    monkeypatch.setenv("USERS_JWT_SECRET", "test-secret")
+    # 32+ bytes to avoid PyJWT InsecureKeyLengthWarning in tests
+    monkeypatch.setenv("USERS_JWT_SECRET", "test-secret-32-bytes-minimum-123456")
 
     app = create_app()
 
