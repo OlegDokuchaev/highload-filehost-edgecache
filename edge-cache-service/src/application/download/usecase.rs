@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::ports::cache::{CacheMeta, CacheRepo, CachedFile};
+use crate::ports::cache::{CacheLock, CacheMeta, CacheRepo, CachedFile};
 use crate::ports::origin::{ConditionalGetResult, OriginClient};
 
 use super::{DownloadAction, DownloadError};
@@ -21,26 +21,37 @@ impl DownloadUseCase {
             return Err(DownloadError::InvalidFileId);
         }
 
-        // Cache lookup — errors treated as miss (graceful degradation).
+        // Fast path - fresh cache hit, no lock needed.
+        if let Ok(Some(cached)) = self.cache.lookup(file_id).await {
+            if !is_expired(&cached.meta) {
+                return Ok(DownloadAction::Hit(cached));
+            }
+        }
+
+        // Acquire file lock - blocks if another request is already fetching.
+        let lock = self.cache.acquire_lock(file_id).await?;
+
+        // Double-check after lock - another request may have populated the cache.
         if let Ok(Some(cached)) = self.cache.lookup(file_id).await {
             if !is_expired(&cached.meta) {
                 return Ok(DownloadAction::Hit(cached));
             }
 
-            // Expired — revalidate (conditional GET or full re-fetch).
-            return self.revalidate(file_id, cached).await;
+            // Still expired - we are the leader for revalidation.
+            return self.revalidate(file_id, cached, lock).await;
         }
 
-        // MISS — not in cache at all.
-        self.fetch_and_cache(file_id).await
+        // Still a MISS - we are the leader for fetching.
+        self.fetch_and_cache(file_id, lock).await
     }
 
     async fn revalidate(
         &self,
         file_id: &str,
         cached: CachedFile,
+        lock: CacheLock,
     ) -> Result<DownloadAction, DownloadError> {
-        // Has etag — conditional GET via If-None-Match.
+        // Has etag - conditional GET via If-None-Match.
         if let Some(etag) = cached.meta.etag.as_deref() {
             let result = self.origin.fetch_if_changed(file_id, etag).await?;
 
@@ -54,28 +65,35 @@ impl DownloadUseCase {
                     Ok(DownloadAction::RevalidatedWithNewContent {
                         origin: origin_resp,
                         writer,
+                        lock,
                     })
                 }
             };
         }
 
-        // No etag — full re-fetch.
+        // No etag - full re-fetch.
         let origin_resp = self.origin.fetch(file_id).await?;
         let writer = self.cache.begin_write(file_id).await?;
 
         Ok(DownloadAction::RevalidatedWithNewContent {
             origin: origin_resp,
             writer,
+            lock,
         })
     }
 
-    async fn fetch_and_cache(&self, file_id: &str) -> Result<DownloadAction, DownloadError> {
+    async fn fetch_and_cache(
+        &self,
+        file_id: &str,
+        lock: CacheLock,
+    ) -> Result<DownloadAction, DownloadError> {
         let origin_resp = self.origin.fetch(file_id).await?;
         let writer = self.cache.begin_write(file_id).await?;
 
         Ok(DownloadAction::Miss {
             origin: origin_resp,
             writer,
+            lock,
         })
     }
 }

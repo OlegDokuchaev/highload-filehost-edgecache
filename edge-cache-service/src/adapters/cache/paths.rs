@@ -15,3 +15,7 @@ pub fn tmp_data_path(dir: &Path, id: &str) -> PathBuf {
 pub fn tmp_meta_path(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{id}.json.tmp"))
 }
+
+pub fn lock_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{id}.lock"))
+}

@@ -11,7 +11,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 
 use crate::application::download::DownloadAction;
-use crate::ports::cache::{CacheWriter, CachedFile};
+use crate::ports::cache::{CacheLock, CacheWriter, CachedFile};
 use crate::ports::origin::OriginResponse;
 
 use super::AppState;
@@ -25,10 +25,16 @@ pub async fn download(
     Ok(match action {
         DownloadAction::Hit(cached) => serve_from_cache(cached, "HIT"),
         DownloadAction::Revalidated(cached) => serve_from_cache(cached, "REVALIDATED"),
-        DownloadAction::Miss { origin, writer } => serve_from_origin(origin, writer, "MISS"),
-        DownloadAction::RevalidatedWithNewContent { origin, writer } => {
-            serve_from_origin(origin, writer, "REVALIDATED")
-        }
+        DownloadAction::Miss {
+            origin,
+            writer,
+            lock,
+        } => serve_from_origin(origin, writer, lock, "MISS"),
+        DownloadAction::RevalidatedWithNewContent {
+            origin,
+            writer,
+            lock,
+        } => serve_from_origin(origin, writer, lock, "REVALIDATED"),
     })
 }
 
@@ -75,6 +81,7 @@ fn serve_from_cache(cached: CachedFile, x_cache: &'static str) -> Response<Body>
 fn serve_from_origin(
     origin: OriginResponse,
     writer: Box<dyn CacheWriter>,
+    lock: CacheLock,
     x_cache: &'static str,
 ) -> Response<Body> {
     let Ok(content_type) = HeaderValue::from_str(&origin.content_type) else {
@@ -84,7 +91,7 @@ fn serve_from_origin(
         return ApiError::internal().into_response();
     };
 
-    let body_stream = stream_and_cache(origin, writer);
+    let body_stream = stream_and_cache(origin, writer, lock);
     download_response(Body::from_stream(body_stream), x_cache, content_type, etag)
 }
 
@@ -99,6 +106,7 @@ fn try_parse_etag(etag: Option<&str>) -> Result<Option<HeaderValue>, header::Inv
 fn stream_and_cache(
     origin: OriginResponse,
     mut writer: Box<dyn CacheWriter>,
+    lock: CacheLock,
 ) -> impl futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send {
     let mut body = origin.body;
     let content_type = origin.content_type;
@@ -112,5 +120,6 @@ fn stream_and_cache(
         }
 
         writer.commit(content_type, etag).await?;
+        drop(lock);
     }
 }
