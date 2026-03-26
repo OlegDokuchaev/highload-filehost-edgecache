@@ -9,11 +9,12 @@ dependencies = [
   "uvicorn[standard]>=0.35.0",
   "sqlalchemy[asyncio]>=2.0.40",
   "asyncpg>=0.30.0",
+  "alembic>=1.14.0",
   "pydantic>=2.11.0",
   "pydantic-settings>=2.8.0",
   "dependency-injector>=4.46.0",
-  "python-jose[cryptography]>=3.4.0",
-  "passlib[bcrypt]>=1.7.4",
+  "PyJWT>=2.9.0",
+  "passlib[argon2]>=1.7.4",
 ]
 
 [project.optional-dependencies]
@@ -24,7 +25,6 @@ dev = [
   "aiosqlite>=0.21.0",
   "mypy>=1.15.0",
   "types-passlib",
-  "types-python-jose",
 ]
 
 [build-system]
@@ -40,6 +40,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
 asyncio_mode = "auto"
+filterwarnings = [
+  # passlib/argon2-cffi internal deprecation warning; doesn't affect correctness
+  "ignore:Accessing argon2\\.__version__ is deprecated:DeprecationWarning:passlib\\.handlers\\.argon2",
+]
 markers = [
   "unit: unit-level tests",
   "integration: integration-level tests",

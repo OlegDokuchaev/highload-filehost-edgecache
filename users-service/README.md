@@ -79,6 +79,24 @@ tests/
 
 При нарушении политики сервис возвращает `400`.
 
+## 4.1) Хеширование паролей (алгоритм)
+
+Используется `argon2id` (через `passlib[argon2]`) как основной алгоритм.
+
+OWASP приоритизирует: `argon2id > bcrypt > scrypt > pbkdf2`. Здесь выбран самый предпочтительный вариант.
+
+### Стратегия миграции паролей
+
+В сервисе включён staged-подход:
+- `argon2` используется для новых/обновлённых хешей;
+- legacy `pbkdf2_sha256` принимается как deprecated;
+- при успешном логине выполняется `verify_and_update`, и хеш прозрачно обновляется до `argon2`.
+
+Ops-checklist:
+1. Убедиться, что приложение и воркеры задеплоены с этой dual-scheme конфигурацией.
+2. Мониторить долю legacy-хешей в БД (должна стремиться к нулю).
+3. После завершения миграции выпустить отдельный релиз, удаляющий legacy-схему.
+
 ## 5) Локальный запуск
 
 1. Создать `.env`:
@@ -99,7 +117,40 @@ docker compose up -d --build
 - `http://localhost:8001/docs`
 - `http://localhost:8001/openapi.json`
 
-## 6) Тесты и типизация
+## 6) Миграции БД
+
+В production схема БД обновляется через Alembic.
+
+Конфигурация в репозитории:
+- `alembic.ini`
+- `alembic/env.py` (async SQLAlchemy/asyncpg)
+- `alembic/versions/bebd0256e49e_initial.py` (initial migration)
+
+Важно: `USERS_DB_URL=...@postgres:5432/...` работает **внутри docker compose**.
+Если ты запускаешь `alembic` на Windows-хосте, используй проброшенный порт:
+`localhost:5433` (см. `docker-compose.yml`).
+
+Пример для bash:
+
+```bash
+export USERS_DB_URL="postgresql+asyncpg://users:users@localhost:5433/users_db"
+alembic upgrade head
+```
+
+Пример для PowerShell:
+
+```powershell
+$env:USERS_DB_URL="postgresql+asyncpg://users:users@localhost:5433/users_db"
+alembic upgrade head
+```
+
+В Docker миграции запускаются автоматически перед стартом сервиса (см. `scripts/entrypoint.sh`).
+`docker-compose.yml` запускает сервис через этот entrypoint.
+
+`Base.metadata.create_all` не используется в production-коде приложения.
+Создание таблиц через `create_all` оставлено только в тестовых утилитах (`tests/db_test_utils.py`).
+
+## 7) Тесты и типизация
 
 ```bash
 pip install -e .[dev]
@@ -128,7 +179,7 @@ pytest -m postgres -q
 (В bash: `export USERS_TEST_DB_URL=...`.) База должна существовать; таблицы
 создаются фикстурами тестов.
 
-## 7) UUID и совместимость БД
+## 8) UUID и совместимость БД
 
 Идентификатор пользователя хранится как UUID. В модели используется явный тип
 `GUID` с диалектным fallback:
@@ -138,7 +189,7 @@ pytest -m postgres -q
 Это позволяет одинаково работать с UUID в production (PostgreSQL) и локальных
 интеграционных тестах (SQLite).
 
-## 8) Очистка лишних файлов
+## 9) Очистка лишних файлов
 
 Скрипты очистки артефактов разработки:
 

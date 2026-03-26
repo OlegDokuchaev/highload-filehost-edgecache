@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import pytest
+from passlib.context import CryptContext
 
 from users_service.config import Settings
 from users_service.domain.errors import PasswordPolicyError
@@ -9,7 +10,7 @@ from users_service.services.security import SecurityService
 
 def _security_service() -> SecurityService:
     settings = Settings(
-        jwt_secret="unit-secret",
+        jwt_secret="unit-secret-32-bytes-minimum-123456",
         access_token_expire_minutes=30,
     )
     return SecurityService(settings=settings)
@@ -54,6 +55,24 @@ def test_hash_and_verify_password() -> None:
     assert password_hash != password
     assert security.verify_password(password, password_hash)
     assert not security.verify_password("WrongPass!1", password_hash)
+
+
+def test_password_hash_uses_argon2_scheme() -> None:
+    security = _security_service()
+    password_hash = security.hash_password("VeryStrongPass!1")
+    assert password_hash.startswith("$argon2")
+
+
+def test_verify_password_and_update_rehashes_legacy_pbkdf2() -> None:
+    legacy_ctx = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+    legacy_hash = legacy_ctx.hash("VeryStrongPass!1")
+
+    security = _security_service()
+    ok, updated = security.verify_password_and_update("VeryStrongPass!1", legacy_hash)
+
+    assert ok is True
+    assert updated is not None
+    assert updated.startswith("$argon2")
 
 
 def test_jwt_create_and_verify_roundtrip() -> None:
