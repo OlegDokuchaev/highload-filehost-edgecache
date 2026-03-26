@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 import jwt
 
 from users_service.config import Settings
-from users_service.db.init_db import create_tables
 from users_service.main import create_app
+from tests.db_test_utils import create_tables_for_tests
 
 
 pytestmark = pytest.mark.integration
@@ -104,7 +104,7 @@ async def test_concurrent_register_same_login(
     monkeypatch.setenv("USERS_JWT_SECRET", "concurrent-secret-32-bytes-minimum-123")
 
     app = create_app()
-    await create_tables(app.state.container.engine())
+    await create_tables_for_tests(app.state.container.engine())
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -132,7 +132,7 @@ def test_verify_expired_token_returns_active_false(
     monkeypatch.setenv("USERS_JWT_SECRET", "expired-secret-32-bytes-minimum-12345")
 
     app = create_app()
-    asyncio.run(create_tables(app.state.container.engine()))
+    asyncio.run(create_tables_for_tests(app.state.container.engine()))
     with TestClient(app) as client:
         register_response = client.post(
             "/auth/register",

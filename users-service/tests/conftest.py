@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from users_service.db.init_db import create_tables
 from users_service.main import create_app
+from tests.db_test_utils import create_tables_for_tests
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
 
     # В тестах создаём таблицы автоматически, без Alembic.
     # В production это делается миграциями.
-    asyncio.run(create_tables(app.state.container.engine()))
+    asyncio.run(create_tables_for_tests(app.state.container.engine()))
 
     with TestClient(app) as client:
         yield client

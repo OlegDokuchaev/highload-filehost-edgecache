@@ -141,6 +141,9 @@ alembic upgrade head
 
 В Docker миграции запускаются автоматически перед стартом сервиса (см. `scripts/entrypoint.sh`).
 
+`Base.metadata.create_all` не используется в production-коде приложения.
+Создание таблиц через `create_all` оставлено только в тестовых утилитах (`tests/db_test_utils.py`).
+
 ## 7) Тесты и типизация
 
 ```bash

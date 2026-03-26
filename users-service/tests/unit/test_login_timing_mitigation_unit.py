@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 
 from users_service.config import Settings
-from users_service.db.init_db import create_tables
 from users_service.db.session import create_engine, create_session_factory
 from users_service.domain.errors import InvalidCredentialsError
 from users_service.services.auth import AuthService
 from users_service.services.security import SecurityService
+from tests.db_test_utils import create_tables_for_tests
 
 
 pytestmark = pytest.mark.unit
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 async def test_login_user_not_found_still_verifies_password(monkeypatch: pytest.MonkeyPatch) -> None:
     """Проверяем mitigation: при user is None всё равно вызывается verify_password()."""
     engine = create_engine("sqlite+aiosqlite:///:memory:")
-    await create_tables(engine)
+    await create_tables_for_tests(engine)
     session_factory = create_session_factory(engine)
 
     security = SecurityService(Settings(jwt_secret="unit-secret-32-bytes-minimum-123456"))
