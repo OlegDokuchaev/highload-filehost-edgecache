@@ -9,7 +9,6 @@ from starlette.responses import Response
 
 from users_service.api.routes_auth import router as auth_router
 from users_service.container import Container
-from users_service.db.init_db import create_tables
 from users_service.domain.errors import PasswordPolicyError
 
 
@@ -38,9 +37,8 @@ def format_validation_error_detail(errors: Sequence[object]) -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, Any]:
-    container: Container = app.state.container
-    await create_tables(container.engine())
     yield
+    container: Container = app.state.container
     await container.engine().dispose()
 
 

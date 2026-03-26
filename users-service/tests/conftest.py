@@ -1,9 +1,11 @@
 import os
+import asyncio
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from users_service.db.init_db import create_tables
 from users_service.main import create_app
 
 
@@ -17,5 +19,10 @@ def test_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
         monkeypatch.setenv("USERS_DB_URL", test_db_url)
     monkeypatch.setenv("USERS_JWT_SECRET", "test-secret")
     app = create_app()
+
+    # В тестах создаём таблицы автоматически, без Alembic.
+    # В production это делается миграциями.
+    asyncio.run(create_tables(app.state.container.engine()))
+
     with TestClient(app) as client:
         yield client
