@@ -17,7 +17,8 @@ def test_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
         monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
     else:
         monkeypatch.setenv("USERS_DB_URL", test_db_url)
-    monkeypatch.setenv("USERS_JWT_SECRET", "test-secret")
+    # 32+ bytes to avoid PyJWT InsecureKeyLengthWarning in tests
+    monkeypatch.setenv("USERS_JWT_SECRET", "test-secret-32-bytes-minimum-123456")
     app = create_app()
 
     # В тестах создаём таблицы автоматически, без Alembic.

@@ -20,7 +20,7 @@ async def test_login_user_not_found_still_verifies_password(monkeypatch: pytest.
     await create_tables(engine)
     session_factory = create_session_factory(engine)
 
-    security = SecurityService(Settings(jwt_secret="unit-secret"))
+    security = SecurityService(Settings(jwt_secret="unit-secret-32-bytes-minimum-123456"))
 
     calls: list[tuple[str, str]] = []
     original_verify = security.verify_password
