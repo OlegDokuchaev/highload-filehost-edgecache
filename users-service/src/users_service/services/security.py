@@ -14,7 +14,9 @@ from users_service.domain.password_policy import validate_password_policy
 class SecurityService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+        # ЧИСТЫЙ режим: только argon2id (argon2), без legacy-алгоритмов.
+        # Это значит, что все старые pbkdf2/bcrypt-хеши должны быть удалены вместе с БД.
+        self._pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
         # Фиксированный dummy-хеш для выравнивания времени ответа при /auth/login
         # (когда пользователь не найден). Хеш считается один раз на запуск.
         self._dummy_password_hash = self._pwd_context.hash("dummy-password")
