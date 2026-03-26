@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from users_service.db.models import User
+from users_service.domain.errors import UniqueConstraintViolationError
 
 
 class UserRepository:
@@ -28,6 +30,9 @@ class UserRepository:
             password_hash=password_hash,
         )
         self._session.add(user)
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise UniqueConstraintViolationError("unique constraint violation") from exc
         await self._session.refresh(user)
         return user
