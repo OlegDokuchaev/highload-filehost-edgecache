@@ -14,6 +14,7 @@ from sqlalchemy import select, update
 from users_service.config import Settings
 from users_service.db.models import User
 from users_service.main import create_app
+from users_service.repositories.users import UserRepository
 from tests.db_test_utils import create_tables_for_tests
 
 
@@ -214,6 +215,69 @@ def test_login_rehashes_legacy_password_hash(
 
         current_hash = asyncio.run(_read_password_hash())
         assert current_hash.startswith("$argon2")
+
+
+def test_update_password_hash_conditional_avoids_stale_overwrite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Repository must use WHERE password_hash = expected (CAS), not blind UPDATE."""
+    db_file = tmp_path / "cas_users.db"
+    monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
+    monkeypatch.setenv("USERS_JWT_SECRET", "cas-secret-32-bytes-minimum-1234567")
+
+    app = create_app()
+    asyncio.run(create_tables_for_tests(app.state.container.engine()))
+
+    async def _run() -> None:
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as session:
+            repo = UserRepository(session)
+            user = await repo.create_user(
+                login="CasUser",
+                normalized_login="casuser",
+                password_hash="hash_v1",
+            )
+            await session.commit()
+            user_id = user.id
+
+        async with session_factory() as session:
+            repo = UserRepository(session)
+            n = await repo.update_password_hash(
+                user_id=user_id,
+                expected_password_hash="wrong_expected",
+                new_password_hash="hash_v2",
+            )
+            assert n == 0
+            await session.commit()
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(User.password_hash).where(User.id == user_id)
+            )
+            assert result.scalar_one() == "hash_v1"
+
+        async with session_factory() as session:
+            repo = UserRepository(session)
+            n = await repo.update_password_hash(
+                user_id=user_id,
+                expected_password_hash="hash_v1",
+                new_password_hash="hash_v2",
+            )
+            assert n == 1
+            await session.commit()
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(User.password_hash).where(User.id == user_id)
+            )
+            assert result.scalar_one() == "hash_v2"
+
+    async def _dispose() -> None:
+        await app.state.container.engine().dispose()
+
+    asyncio.run(_run())
+    asyncio.run(_dispose())
 
 
 @pytest.mark.postgres

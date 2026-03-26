@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -11,6 +12,8 @@ from users_service.domain.errors import (
 )
 from users_service.repositories.users import UserRepository
 from users_service.services.security import SecurityService
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -49,6 +52,8 @@ class AuthService:
         normalized_login = self._security.normalize_login(login)
 
         async with self._session_factory() as session:
+            # UserRepository всегда привязан к этому же AsyncSession — commit ниже
+            # относится к той же транзакции, что и UPDATE в репозитории.
             repo = UserRepository(session)
             user = await repo.get_by_normalized_login(normalized_login)
             if user is None:
@@ -57,14 +62,25 @@ class AuthService:
                 # Результат игнорируется.
                 self._security.verify_password(password, self._security.dummy_password_hash)
                 raise InvalidCredentialsError("invalid credentials")
+            password_hash_at_read = user.password_hash
             ok, updated_hash = self._security.verify_password_and_update(
                 password,
-                user.password_hash,
+                password_hash_at_read,
             )
             if not ok:
                 raise InvalidCredentialsError("invalid credentials")
             if updated_hash is not None:
-                await repo.update_password_hash(user_id=user.id, password_hash=updated_hash)
+                rows = await repo.update_password_hash(
+                    user_id=user.id,
+                    expected_password_hash=password_hash_at_read,
+                    new_password_hash=updated_hash,
+                )
+                if rows == 0:
+                    # Параллельный запрос уже сменил пароль — не перезаписываем чужой хеш.
+                    logger.info(
+                        "password rehash skipped: row not updated "
+                        "(concurrent password change or stale read)"
+                    )
                 await session.commit()
 
             token = self._security.create_access_token(
