@@ -7,7 +7,7 @@ from uuid import UUID
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 
 from users_service.config import Settings
 from users_service.db.init_db import create_tables

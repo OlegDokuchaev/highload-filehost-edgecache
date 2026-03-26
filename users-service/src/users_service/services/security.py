@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from passlib.context import CryptContext
 
 from users_service.config import Settings
@@ -58,5 +59,5 @@ class SecurityService:
             if not isinstance(user_id, str) or not isinstance(normalized_login, str):
                 return None
             return {"user_id": user_id, "normalized_login": normalized_login}
-        except JWTError:
+        except InvalidTokenError:
             return None
