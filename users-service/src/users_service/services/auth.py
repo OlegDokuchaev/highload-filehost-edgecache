@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from users_service.domain.errors import (
     InvalidCredentialsError,
+    UniqueConstraintViolationError,
     UserAlreadyExistsError,
 )
 from users_service.repositories.users import UserRepository
@@ -41,7 +41,7 @@ class AuthService:
                 )
                 await session.commit()
                 return user.id, user.login, user.normalized_login
-            except IntegrityError as exc:
+            except UniqueConstraintViolationError as exc:
                 await session.rollback()
                 raise UserAlreadyExistsError("normalized_login already exists") from exc
 
@@ -52,6 +52,10 @@ class AuthService:
             repo = UserRepository(session)
             user = await repo.get_by_normalized_login(normalized_login)
             if user is None:
+                # ВАЖНО: выравниваем время ответа, чтобы нельзя было отличить
+                # "пользователь не найден" от "неверный пароль" по таймингу.
+                # Результат игнорируется.
+                self._security.verify_password(password, self._security.dummy_password_hash)
                 raise InvalidCredentialsError("invalid credentials")
             if not self._security.verify_password(password, user.password_hash):
                 raise InvalidCredentialsError("invalid credentials")
