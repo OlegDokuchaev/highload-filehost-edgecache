@@ -21,6 +21,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: users-service
+    command: ["sh", "./scripts/entrypoint.sh"]
     env_file:
       - .env
     ports:
