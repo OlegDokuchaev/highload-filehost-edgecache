@@ -8,8 +8,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 import jwt
+from passlib.context import CryptContext
+from sqlalchemy import select, update
 
 from users_service.config import Settings
+from users_service.db.models import User
 from users_service.main import create_app
 from tests.db_test_utils import create_tables_for_tests
 
@@ -162,6 +165,55 @@ def test_verify_expired_token_returns_active_false(
         verify_response = client.post("/auth/verify", json={"token": expired_token})
         assert verify_response.status_code == 200
         assert verify_response.json()["active"] is False
+
+
+def test_login_rehashes_legacy_password_hash(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "rehash_users.db"
+    monkeypatch.setenv("USERS_DB_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
+    monkeypatch.setenv("USERS_JWT_SECRET", "rehash-secret-32-bytes-minimum-12345")
+
+    app = create_app()
+    asyncio.run(create_tables_for_tests(app.state.container.engine()))
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/auth/register",
+            json={"login": "RehashUser", "password": "VeryStrongPass!1"},
+        )
+        assert register_response.status_code == 201
+        user_id = UUID(register_response.json()["user_id"])
+
+        legacy_ctx = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+        legacy_hash = legacy_ctx.hash("VeryStrongPass!1")
+
+        async def _set_legacy_hash() -> None:
+            session_factory = app.state.container.session_factory()
+            async with session_factory() as session:
+                await session.execute(
+                    update(User).where(User.id == user_id).values(password_hash=legacy_hash)
+                )
+                await session.commit()
+
+        asyncio.run(_set_legacy_hash())
+
+        login_response = client.post(
+            "/auth/login",
+            json={"login": "RehashUser", "password": "VeryStrongPass!1"},
+        )
+        assert login_response.status_code == 200
+
+        async def _read_password_hash() -> str:
+            session_factory = app.state.container.session_factory()
+            async with session_factory() as session:
+                result = await session.execute(
+                    select(User.password_hash).where(User.id == user_id)
+                )
+                return result.scalar_one()
+
+        current_hash = asyncio.run(_read_password_hash())
+        assert current_hash.startswith("$argon2")
 
 
 @pytest.mark.postgres
