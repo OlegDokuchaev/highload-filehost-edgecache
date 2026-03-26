@@ -130,6 +130,7 @@ def test_verify_expired_token_returns_active_false(
     monkeypatch.setenv("USERS_JWT_SECRET", "expired-secret")
 
     app = create_app()
+    asyncio.run(create_tables(app.state.container.engine()))
     with TestClient(app) as client:
         register_response = client.post(
             "/auth/register",
