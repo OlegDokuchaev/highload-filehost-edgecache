@@ -99,6 +99,30 @@ docker compose up -d --build
 - `http://localhost:8001/docs`
 - `http://localhost:8001/openapi.json`
 
+## 6) Миграции БД
+
+В production схема БД обновляется через Alembic.
+
+Важно: `USERS_DB_URL=...@postgres:5432/...` работает **внутри docker compose**.
+Если ты запускаешь `alembic` на Windows-хосте, используй проброшенный порт:
+`localhost:5433` (см. `docker-compose.yml`).
+
+Пример для bash:
+
+```bash
+export USERS_DB_URL="postgresql+asyncpg://users:users@localhost:5433/users_db"
+alembic upgrade head
+```
+
+Пример для PowerShell:
+
+```powershell
+$env:USERS_DB_URL="postgresql+asyncpg://users:users@localhost:5433/users_db"
+alembic upgrade head
+```
+
+В Docker миграции запускаются автоматически перед стартом сервиса (см. `scripts/entrypoint.sh`).
+
 ## 6) Тесты и типизация
 
 ```bash
