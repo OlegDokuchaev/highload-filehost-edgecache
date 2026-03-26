@@ -56,6 +56,12 @@ def test_hash_and_verify_password() -> None:
     assert not security.verify_password("WrongPass!1", password_hash)
 
 
+def test_password_hash_uses_bcrypt_scheme() -> None:
+    security = _security_service()
+    password_hash = security.hash_password("VeryStrongPass!1")
+    assert password_hash.startswith("$argon2")
+
+
 def test_jwt_create_and_verify_roundtrip() -> None:
     security = _security_service()
     token = security.create_access_token(
