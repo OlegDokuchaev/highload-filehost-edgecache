@@ -155,9 +155,6 @@ set USERS_TEST_DB_URL=postgresql+asyncpg://user:pass@localhost:5432/users_test
 pytest -m postgres -q
 ```
 
-(В bash: `export USERS_TEST_DB_URL=...`.) База должна существовать; таблицы
-создаются фикстурами тестов.
-
 ## 8) UUID и совместимость БД
 
 Идентификатор пользователя хранится как UUID. В модели используется явный тип
