@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from users_service.main import create_app
 
-from db_test_utils import create_tables_for_tests
+from .db_test_utils import create_tables_for_tests
 
 
 @pytest.fixture
