@@ -40,7 +40,7 @@ async def test_timing_user_missing_vs_wrong_password_medians_close() -> None:
     engine = create_engine("sqlite+aiosqlite:///:memory:")
     await create_tables(engine)
     session_factory = create_session_factory(engine)
-    security = SecurityService(Settings(jwt_secret="unit-secret"))
+    security = SecurityService(Settings(jwt_secret="unit-secret-32-bytes-minimum-123456"))
     service = AuthService(session_factory=session_factory, security_service=security)
 
     # Создаём пользователя
