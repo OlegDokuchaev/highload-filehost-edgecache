@@ -14,7 +14,7 @@ dependencies = [
   "pydantic-settings>=2.8.0",
   "dependency-injector>=4.46.0",
   "PyJWT>=2.9.0",
-  "passlib[bcrypt]>=1.7.4",
+  "passlib[argon2]>=1.7.4",
 ]
 
 [project.optional-dependencies]
