@@ -60,7 +60,7 @@ impl OriginClientImpl {
             .headers()
             .get(reqwest::header::CACHE_CONTROL)
             .and_then(|v| v.to_str().ok())
-            .and_then(parse_max_age);
+            .and_then(parse_cache_ttl);
 
         let body = Box::pin(
             resp.bytes_stream()
@@ -106,7 +106,7 @@ impl OriginClient for OriginClientImpl {
                 .headers()
                 .get(reqwest::header::CACHE_CONTROL)
                 .and_then(|v| v.to_str().ok())
-                .and_then(parse_max_age);
+                .and_then(parse_cache_ttl);
             return Ok(ConditionalGetResult::NotModified { max_age });
         }
         Self::check_success(&resp)?;
@@ -117,13 +117,25 @@ impl OriginClient for OriginClientImpl {
     }
 }
 
-fn parse_max_age(header: &str) -> Option<u64> {
-    header.split(',').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        if name.trim().eq_ignore_ascii_case("max-age") {
-            value.trim().parse().ok()
-        } else {
-            None
+/// Extracts TTL from Cache-Control header.
+/// Priority: s-maxage > max-age.
+fn parse_cache_ttl(header: &str) -> Option<u64> {
+    let mut max_age = None;
+
+    for part in header.split(',').map(str::trim) {
+        let Some((name, value)) = part.split_once('=') else {
+            continue;
+        };
+
+        let name = name.trim();
+
+        if name.eq_ignore_ascii_case("s-maxage") {
+            return value.trim().parse().ok();
         }
-    })
+        if max_age.is_none() && name.eq_ignore_ascii_case("max-age") {
+            max_age = value.trim().parse().ok();
+        }
+    }
+
+    max_age
 }
