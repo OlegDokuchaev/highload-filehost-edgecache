@@ -56,6 +56,12 @@ impl OriginClientImpl {
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
 
+        let max_age = resp
+            .headers()
+            .get(reqwest::header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_max_age);
+
         let body = Box::pin(
             resp.bytes_stream()
                 .map(|r| r.map_err(std::io::Error::other)),
@@ -64,6 +70,7 @@ impl OriginClientImpl {
         OriginResponse {
             content_type,
             etag,
+            max_age,
             body,
         }
     }
@@ -103,4 +110,15 @@ impl OriginClient for OriginClientImpl {
             Self::parse_success_response(resp),
         ))
     }
+}
+
+fn parse_max_age(header: &str) -> Option<u64> {
+    header.split(',').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        if name.trim().eq_ignore_ascii_case("max-age") {
+            value.trim().parse().ok()
+        } else {
+            None
+        }
+    })
 }
