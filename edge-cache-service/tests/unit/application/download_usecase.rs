@@ -534,8 +534,8 @@ mod revalidation {
             .expect_fetch_if_changed()
             .withf(|_, etag| etag == "\"etag-123\"")
             .times(1)
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
-        cache.expect_refresh_ttl().times(1).returning(|_| Ok(()));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
+        cache.expect_refresh_ttl().times(1).returning(|_, _| Ok(()));
 
         let uc = make_use_case(cache, origin);
 
@@ -623,8 +623,8 @@ mod revalidation {
         cache.expect_acquire_lock().returning(|_| Ok(mock_lock()));
         origin
             .expect_fetch_if_changed()
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
-        cache.expect_refresh_ttl().returning(|_| Ok(()));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
+        cache.expect_refresh_ttl().returning(|_, _| Ok(()));
         cache.expect_begin_write().never();
 
         let uc = make_use_case(cache, origin);

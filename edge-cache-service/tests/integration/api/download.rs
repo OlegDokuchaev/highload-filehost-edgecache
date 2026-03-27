@@ -600,7 +600,7 @@ mod revalidated {
         // Subsequent calls — 304 Not Modified
         origin
             .expect_fetch_if_changed()
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
         origin
     }
 
@@ -647,7 +647,7 @@ mod revalidated {
         origin
             .expect_fetch_if_changed()
             .times(1)
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
 
         // TTL=3600 for refresh — after 304, the entry should be fresh
         let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
@@ -720,7 +720,7 @@ mod revalidated {
         });
         origin
             .expect_fetch_if_changed()
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
 
         let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
         seed_cache(&env, "photo").await;
