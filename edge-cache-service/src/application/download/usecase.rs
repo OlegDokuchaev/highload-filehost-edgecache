@@ -22,10 +22,10 @@ impl DownloadUseCase {
         }
 
         // Fast path - fresh cache hit, no lock needed.
-        if let Ok(Some(cached)) = self.cache.lookup(file_id).await {
-            if !is_expired(&cached.meta) {
-                return Ok(DownloadAction::Hit(cached));
-            }
+        if let Ok(Some(cached)) = self.cache.lookup(file_id).await
+            && !is_expired(&cached.meta)
+        {
+            return Ok(DownloadAction::Hit(cached));
         }
 
         // Acquire file lock - blocks if another request is already fetching.
