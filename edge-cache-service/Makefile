@@ -41,10 +41,10 @@ k6-origin:
 	@bash $(ORIGIN_DIR)/start.sh
 
 k6-cold:
-	$(K6) run -e $(K6_DIR)/cold-cache.js
+	$(K6) run $(K6_DIR)/cold-cache.js
 
 k6-warm:
-	$(K6) run -e $(K6_DIR)/warm-cache.js
+	$(K6) run $(K6_DIR)/warm-cache.js
 
 k6-hot:
-	$(K6) run -e $(K6_DIR)/hot-key.js
+	$(K6) run $(K6_DIR)/hot-key.js
