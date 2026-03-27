@@ -7,7 +7,7 @@ use serde::Deserialize;
 pub struct CacheSettings {
     pub dir: String,
     #[serde(with = "humantime_serde")]
-    pub ttl: Duration,
+    pub default_ttl: Duration,
 }
 
 impl CacheSettings {

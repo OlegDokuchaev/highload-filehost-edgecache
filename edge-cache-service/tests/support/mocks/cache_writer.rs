@@ -8,6 +8,6 @@ mock! {
     #[async_trait::async_trait]
     impl CacheWriter for CacheWriter {
         async fn write_chunk(&mut self, chunk: &[u8]) -> Result<(), CacheError>;
-        async fn commit(self: Box<Self>, content_type: String, etag: Option<String>) -> Result<(), CacheError>;
+        async fn commit(self: Box<Self>, content_type: String, etag: Option<String>, max_age: Option<u64>) -> Result<(), CacheError>;
     }
 }

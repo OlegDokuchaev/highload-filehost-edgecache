@@ -35,6 +35,7 @@ fn default_origin_mock() -> MockOriginClient {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: Some(format!("\"etag-{file_id}\"")),
+                max_age: None,
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         }
@@ -48,7 +49,7 @@ async fn setup_with(origin: MockOriginClient) -> Env {
 
     let cache = CacheRepoImpl::new(CacheSettings {
         dir: cache_dir.to_str().unwrap().to_string(),
-        ttl: Duration::from_secs(3600),
+        default_ttl: Duration::from_secs(3600),
     });
     let state = Arc::new(AppState {
         download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
@@ -69,13 +70,13 @@ async fn setup() -> Env {
     setup_with(default_origin_mock()).await
 }
 
-async fn setup_with_ttl(origin: MockOriginClient, ttl: Duration) -> Env {
+async fn setup_with_ttl(origin: MockOriginClient, default_ttl: Duration) -> Env {
     let tmp = tempfile::tempdir().unwrap();
     let cache_dir = tmp.path().to_path_buf();
 
     let cache = CacheRepoImpl::new(CacheSettings {
         dir: cache_dir.to_str().unwrap().to_string(),
-        ttl,
+        default_ttl,
     });
     let state = Arc::new(AppState {
         download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
@@ -192,6 +193,7 @@ mod miss {
             Ok(OriginResponse {
                 content_type: "text/html".to_string(),
                 etag: None,
+                max_age: None,
                 body: Box::pin(stream::once(async { Ok(Bytes::from("<h1>hello</h1>")) })),
             })
         });
@@ -226,6 +228,7 @@ mod miss {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: None,
+                max_age: None,
                 body: Box::pin(stream::once(async { Ok(Bytes::from("no-etag")) })),
             })
         });
@@ -251,6 +254,7 @@ mod miss {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: None,
+                max_age: None,
                 body: Box::pin(stream::iter(chunks)),
             })
         });
@@ -267,6 +271,55 @@ mod miss {
 
         let meta = read_cache_meta(&env, "large");
         assert_eq!(meta.content_length, 8192 * 3);
+    }
+
+    #[tokio::test]
+    async fn origin_max_age_overrides_default_ttl() {
+        // given — origin returns Cache-Control: max-age=120
+        let mut origin = MockOriginClient::new();
+        origin.expect_fetch().returning(|file_id| {
+            let body = format!("content of {file_id}");
+            Ok(OriginResponse {
+                content_type: "application/octet-stream".to_string(),
+                etag: None,
+                max_age: Some(120),
+                body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
+            })
+        });
+        // default TTL is 3600s, but origin says 120s
+        let env = setup_with_ttl(origin, Duration::from_secs(3600)).await;
+
+        // when
+        seed_cache(&env, "short-ttl").await;
+
+        // then — expires_at should be ~now+120, not now+3600
+        let meta = read_cache_meta(&env, "short-ttl");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let ttl_actual = meta.expires_at - now;
+        assert!(ttl_actual <= 122, "expected TTL ~120s, got {ttl_actual}s");
+        assert!(ttl_actual >= 118, "expected TTL ~120s, got {ttl_actual}s");
+    }
+
+    #[tokio::test]
+    async fn default_ttl_used_when_no_max_age() {
+        // given — origin returns no Cache-Control
+        let env = setup_with_ttl(default_origin_mock(), Duration::from_secs(7200)).await;
+
+        // when
+        seed_cache(&env, "default-ttl").await;
+
+        // then — expires_at should be ~now+7200
+        let meta = read_cache_meta(&env, "default-ttl");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let ttl_actual = meta.expires_at - now;
+        assert!(ttl_actual <= 7202, "expected TTL ~7200s, got {ttl_actual}s");
+        assert!(ttl_actual >= 7198, "expected TTL ~7200s, got {ttl_actual}s");
     }
 }
 
@@ -328,6 +381,7 @@ mod hit {
             Ok(OriginResponse {
                 content_type: "image/jpeg".to_string(),
                 etag: Some("\"jpeg-etag\"".to_string()),
+                max_age: None,
                 body: Box::pin(stream::once(async { Ok(Bytes::from("jpeg-data")) })),
             })
         });
@@ -363,6 +417,7 @@ mod hit {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: Some("\"once-etag\"".to_string()),
+                max_age: None,
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         });
@@ -454,6 +509,7 @@ mod errors {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: None,
+                max_age: None,
                 body: Box::pin(stream::iter(chunks)),
             })
         });
@@ -488,6 +544,7 @@ mod expired {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: None,
+                max_age: None,
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         });
@@ -536,13 +593,14 @@ mod revalidated {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: Some(format!("\"etag-{file_id}\"")),
+                max_age: None,
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         });
         // Subsequent calls — 304 Not Modified
         origin
             .expect_fetch_if_changed()
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
         origin
     }
 
@@ -582,13 +640,14 @@ mod revalidated {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: Some("\"e1\"".to_string()),
+                max_age: None,
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         });
         origin
             .expect_fetch_if_changed()
             .times(1)
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
 
         // TTL=3600 for refresh — after 304, the entry should be fresh
         let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
@@ -616,6 +675,7 @@ mod revalidated {
             Ok(OriginResponse {
                 content_type: "text/plain".to_string(),
                 etag: Some("\"old-etag\"".to_string()),
+                max_age: None,
                 body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
             })
         });
@@ -627,6 +687,7 @@ mod revalidated {
                 Ok(ConditionalGetResult::Modified(OriginResponse {
                     content_type: "text/html".to_string(),
                     etag: Some("\"new-etag\"".to_string()),
+                    max_age: None,
                     body: Box::pin(stream::once(async move { Ok(Bytes::from(body)) })),
                 }))
             });
@@ -653,12 +714,13 @@ mod revalidated {
             Ok(OriginResponse {
                 content_type: "image/jpeg".to_string(),
                 etag: Some("\"jpeg-e\"".to_string()),
+                max_age: None,
                 body: Box::pin(stream::once(async { Ok(Bytes::from("jpeg-data")) })),
             })
         });
         origin
             .expect_fetch_if_changed()
-            .returning(|_, _| Ok(ConditionalGetResult::NotModified));
+            .returning(|_, _| Ok(ConditionalGetResult::NotModified { max_age: None }));
 
         let env = setup_with_ttl(origin, Duration::from_secs(0)).await;
         seed_cache(&env, "photo").await;
@@ -687,6 +749,7 @@ mod coalescing {
             Ok(OriginResponse {
                 content_type: "application/octet-stream".to_string(),
                 etag: Some("\"e1\"".to_string()),
+                max_age: None,
                 body: Box::pin(async_stream::stream! {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     yield Ok(Bytes::from(body));

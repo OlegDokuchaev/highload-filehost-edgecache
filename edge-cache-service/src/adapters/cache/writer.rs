@@ -16,7 +16,7 @@ pub struct CacheWriterImpl {
     tmp_meta: PathBuf,
     final_meta: PathBuf,
     committed: bool,
-    ttl: Duration,
+    default_ttl: Duration,
     written: u64,
 }
 
@@ -25,7 +25,7 @@ impl CacheWriterImpl {
         file: tokio::fs::File,
         cache_dir: &std::path::Path,
         file_id: &str,
-        ttl: Duration,
+        default_ttl: Duration,
     ) -> Self {
         Self {
             file,
@@ -34,7 +34,7 @@ impl CacheWriterImpl {
             tmp_meta: tmp_meta_path(cache_dir, file_id),
             final_meta: meta_path(cache_dir, file_id),
             committed: false,
-            ttl,
+            default_ttl,
             written: 0,
         }
     }
@@ -52,15 +52,17 @@ impl CacheWriter for CacheWriterImpl {
         mut self: Box<Self>,
         content_type: String,
         etag: Option<String>,
+        max_age: Option<u64>,
     ) -> Result<(), CacheError> {
         tokio::fs::rename(&self.tmp_data, &self.final_data).await?;
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+        let ttl_secs = max_age.unwrap_or(self.default_ttl.as_secs()) as i64;
 
         let meta = CacheMeta {
             content_type,
             content_length: self.written,
-            expires_at: now + self.ttl.as_secs() as i64,
+            expires_at: now + ttl_secs,
             etag,
         };
         let data = serde_json::to_vec(&meta)?;

@@ -8,5 +8,6 @@ pub trait CacheWriter: Send {
         self: Box<Self>,
         content_type: String,
         etag: Option<String>,
+        max_age: Option<u64>,
     ) -> Result<(), CacheError>;
 }

@@ -56,8 +56,8 @@ impl DownloadUseCase {
             let result = self.origin.fetch_if_changed(file_id, etag).await?;
 
             return match result {
-                ConditionalGetResult::NotModified => {
-                    self.cache.refresh_ttl(file_id).await?;
+                ConditionalGetResult::NotModified { max_age } => {
+                    self.cache.refresh_ttl(file_id, max_age).await?;
                     Ok(DownloadAction::Revalidated(cached))
                 }
                 ConditionalGetResult::Modified(origin_resp) => {
