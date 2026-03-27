@@ -12,14 +12,14 @@ use tokio_util::io::ReaderStream;
 #[derive(Clone)]
 pub struct CacheRepoImpl {
     cache_dir: PathBuf,
-    ttl: Duration,
+    default_ttl: Duration,
 }
 
 impl CacheRepoImpl {
     pub fn new(settings: CacheSettings) -> Self {
         Self {
             cache_dir: PathBuf::from(settings.dir),
-            ttl: settings.ttl,
+            default_ttl: settings.default_ttl,
         }
     }
 }
@@ -52,7 +52,7 @@ impl CacheRepo for CacheRepoImpl {
             file,
             &self.cache_dir,
             file_id,
-            self.ttl,
+            self.default_ttl,
         )))
     }
 
@@ -62,7 +62,7 @@ impl CacheRepo for CacheRepoImpl {
         let mut meta: CacheMeta = serde_json::from_slice(&meta_bytes)?;
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
-        meta.expires_at = now + self.ttl.as_secs() as i64;
+        meta.expires_at = now + self.default_ttl.as_secs() as i64;
 
         let tmp = tmp_meta_path(&self.cache_dir, file_id);
         let data = serde_json::to_vec(&meta)?;

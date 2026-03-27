@@ -60,6 +60,7 @@ fn make_origin_response() -> OriginResponse {
     OriginResponse {
         content_type: "application/octet-stream".to_string(),
         etag: None,
+        max_age: None,
         body: Box::pin(stream::empty()),
     }
 }
@@ -559,6 +560,7 @@ mod revalidation {
             Ok(ConditionalGetResult::Modified(OriginResponse {
                 content_type: "image/webp".to_string(),
                 etag: Some("\"new-etag\"".to_string()),
+                max_age: None,
                 body: Box::pin(stream::empty()),
             }))
         });

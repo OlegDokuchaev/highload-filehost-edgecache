@@ -111,6 +111,7 @@ fn stream_and_cache(
     let mut body = origin.body;
     let content_type = origin.content_type;
     let etag = origin.etag;
+    let max_age = origin.max_age;
 
     try_stream! {
         while let Some(chunk) = body.next().await {
@@ -119,7 +120,7 @@ fn stream_and_cache(
             yield chunk;
         }
 
-        writer.commit(content_type, etag).await?;
+        writer.commit(content_type, etag, max_age).await?;
         drop(lock);
     }
 }
