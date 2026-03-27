@@ -6,7 +6,7 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize, Clone)]
 pub struct CacheSettings {
     pub dir: String,
-    #[serde(with = "humantime_serde", rename = "ttl")]
+    #[serde(with = "humantime_serde")]
     pub default_ttl: Duration,
 }
 
