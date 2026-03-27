@@ -8,6 +8,6 @@ pub struct OriginResponse {
 }
 
 pub enum ConditionalGetResult {
-    NotModified,
+    NotModified { max_age: Option<u64> },
     Modified(OriginResponse),
 }

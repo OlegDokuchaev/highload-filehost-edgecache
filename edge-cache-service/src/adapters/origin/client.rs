@@ -102,7 +102,12 @@ impl OriginClient for OriginClientImpl {
         let resp = self.send_get(file_id, Some(etag)).await?;
 
         if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
-            return Ok(ConditionalGetResult::NotModified);
+            let max_age = resp
+                .headers()
+                .get(reqwest::header::CACHE_CONTROL)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_max_age);
+            return Ok(ConditionalGetResult::NotModified { max_age });
         }
         Self::check_success(&resp)?;
 
