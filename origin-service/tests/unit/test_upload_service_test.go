@@ -3,6 +3,7 @@ package unit
 import (
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -240,8 +241,13 @@ func TestDownloadByFileID_Success(t *testing.T) {
 
 	// Проверка
 	require.NoError(t, err)
-	assert.Equal(t, content, fileContent.Bytes)
 	assert.Equal(t, input.ContentType, fileContent.ContentType)
+
+	// Читаем содержимое из Reader и закрываем
+	data, err := io.ReadAll(fileContent.Reader)
+	require.NoError(t, err)
+	fileContent.Reader.Close()
+	assert.Equal(t, content, data)
 }
 
 // TestDownloadByFileID_NotFound проверяет, что ErrNotFound возвращается для отсутствующего файла.
@@ -294,4 +300,10 @@ func TestDownloadByFileID_DefaultContentType(t *testing.T) {
 	// Проверка
 	require.NoError(t, err)
 	assert.Equal(t, "application/octet-stream", fileContent.ContentType)
+
+	// Дополнительно проверяем содержимое
+	data, err := io.ReadAll(fileContent.Reader)
+	require.NoError(t, err)
+	fileContent.Reader.Close()
+	assert.Equal(t, content, data)
 }

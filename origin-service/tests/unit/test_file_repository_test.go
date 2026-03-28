@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
-	"strings"
 
 	repository "origin-service/repository"
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/minio/minio-go/v7"
 )
 
 // newTestStorage создает новый MinIOStorage, подключенный к тестовому экземпляру MinIO.
@@ -101,7 +102,12 @@ func TestUploadFile(t *testing.T) {
 	storedFile, err := repo.GetFile(ctx, metadata.FileID)
 	require.NoError(t, err)
 	assert.Equal(t, metadata, &storedFile.Metadata)
-	assert.Equal(t, []byte(content), storedFile.Data)
+
+	// Читаем содержимое из Reader и закрываем
+	data, err := io.ReadAll(storedFile.Reader)
+	require.NoError(t, err)
+	storedFile.Reader.Close()
+	assert.Equal(t, []byte(content), data)
 }
 
 // TestGetFileExisting проверяет получение существующего файла
@@ -127,7 +133,12 @@ func TestGetFileExisting(t *testing.T) {
 	// Проверка
 	require.NoError(t, err)
 	assert.Equal(t, *uploadedMeta, stored.Metadata)
-	assert.Equal(t, data, stored.Data)
+
+	// Читаем содержимое из Reader и закрываем
+	readData, err := io.ReadAll(stored.Reader)
+	require.NoError(t, err)
+	stored.Reader.Close()
+	assert.Equal(t, data, readData)
 }
 
 // TestGetFileNotFound проверяет получение несуществующего файла

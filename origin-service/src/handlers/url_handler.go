@@ -10,6 +10,7 @@ import (
 	"strings"
 	"log/slog"
 	"context"
+	"io"
 
 	service "origin-service/service"
 )
@@ -143,47 +144,54 @@ func (h *URLHandler) getMyFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) getFileByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		slog.Error("method not allowed", "method", r.Method)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    if r.Method != http.MethodGet {
+        slog.Error("method not allowed", "method", r.Method)
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 
-	fileID := strings.TrimPrefix(r.URL.Path, "/files/")
-	if fileID == "" {
-		slog.Warn("get file called with empty fileID")
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
+    fileID := strings.TrimPrefix(r.URL.Path, "/files/")
+    if fileID == "" {
+        slog.Warn("get file called with empty fileID")
+        writeError(w, http.StatusNotFound, "not found")
+        return
+    }
 
-	result, err := h.uploadService.DownloadByFileID(r.Context(), fileID)
-	if err != nil {
-		if errors.Is(err, service.ErrNotFound) {
-			slog.Warn("file not found", "fileID", fileID)
-			writeError(w, http.StatusNotFound, "not found")
-			return
-		}
-		slog.Error("failed to get file", "error", err, "fileID", fileID)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
+    result, err := h.uploadService.DownloadByFileID(r.Context(), fileID)
+    if err != nil {
+        if errors.Is(err, service.ErrNotFound) {
+            slog.Warn("file not found", "fileID", fileID)
+            writeError(w, http.StatusNotFound, "not found")
+            return
+        }
+        slog.Error("failed to get file", "error", err, "fileID", fileID)
+        writeError(w, http.StatusInternalServerError, "internal error")
+        return
+    }
+    defer result.Reader.Close() // обязательно закрываем поток
 
-	etag := buildETag(result.Bytes)
-	ifNoneMatch := strings.TrimSpace(r.Header.Get("If-None-Match"))
-	if ifNoneMatch != "" && ifNoneMatch == etag {
-		w.Header().Set("ETag", etag)
-		w.Header().Set("Cache-Control", h.cacheControlValue())
-		w.WriteHeader(http.StatusNotModified)
-		slog.Info("file not modified", "fileID", fileID)
-		return
-	}
+    // Проверка If-None-Match
+    ifNoneMatch := strings.TrimSpace(r.Header.Get("If-None-Match"))
+    if ifNoneMatch != "" && ifNoneMatch == result.ETag {
+        w.Header().Set("ETag", result.ETag)
+        w.Header().Set("Cache-Control", h.cacheControlValue())
+        w.WriteHeader(http.StatusNotModified)
+        slog.Info("file not modified", "fileID", fileID)
+        return
+    }
 
-	w.Header().Set("Content-Type", result.ContentType)
-	w.Header().Set("Cache-Control", h.cacheControlValue())
-	w.Header().Set("ETag", etag)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result.Bytes)
-	slog.Info("file downloaded", "fileID", fileID, "contentType", result.ContentType, "sizeBytes", len(result.Bytes))
+    // Устанавливаем заголовки
+    w.Header().Set("Content-Type", result.ContentType)
+    w.Header().Set("Cache-Control", h.cacheControlValue())
+    w.Header().Set("ETag", result.ETag)
+    w.WriteHeader(http.StatusOK)
+
+    // Стриминг содержимого
+    if _, err := io.Copy(w, result.Reader); err != nil {
+        slog.Error("failed to copy file content", "error", err, "fileID", fileID)
+        // Заголовки уже отправлены, ошибку клиенту не вернуть – только лог
+    }
+    slog.Info("file downloaded", "fileID", fileID, "contentType", result.ContentType, "sizeBytes", result.Size)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

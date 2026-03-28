@@ -25,11 +25,7 @@ type FileMetadata struct {
 	ContentType string
 	Size        int64
 	UploadedAt  time.Time
-}
-
-type StoredFile struct {
-	Metadata FileMetadata
-	Data     []byte
+	Checksum    string
 }
 
 type MinIOStorage struct {
@@ -53,19 +49,6 @@ func NewMinIOStorage(
 		slog.Error("failed to create minio client", "error", err)
 		return nil, fmt.Errorf("init minio client: %w", err)
 	}
-
-	// exists, err := client.BucketExists(ctx, bucket)
-	// if err != nil {
-	// 	slog.Warn("failed to check bucket existence", "error", err)
-	// 	// return nil, fmt.Errorf("check bucket existence: %w", err)
-	// }
-	// if !exists {
-	// 	if err = client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-	// 		slog.Error("failed to create bucket", "error", err)
-	// 		return nil, fmt.Errorf("create bucket: %w", err)
-	// 	}
-	// 	slog.Info("created bucket", "bucket", bucket)
-	// }
 
 	return &MinIOStorage{
 		Client: client,
