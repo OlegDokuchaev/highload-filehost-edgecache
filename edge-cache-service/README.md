@@ -37,6 +37,8 @@ src/
 ├── adapters/        # Реализации
 │   ├── api/         # HTTP-хэндлеры (axum)
 │   ├── cache/       # Дисковый кэш
+│   ├── ext/         # Extension traits (LogOnErr)
+│   ├── logging/     # Инициализация tracing
 │   └── origin/      # HTTP-клиент к origin
 └── application/     # Use cases
     └── download/    # DownloadUseCase
@@ -48,6 +50,7 @@ src/
 
 | Переменная | Описание | Пример |
 |---|---|---|
+| `LOG__LEVEL` | Уровень логирования ([`EnvFilter`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html) директива) | `info`, `debug`, `edge_cache_service=trace` |
 | `CACHE__DIR` | Директория для кэша | `/tmp/cache` |
 | `CACHE__DEFAULT_TTL` | Default TTL (fallback, если origin не отдаёт `Cache-Control`) | `1h`, `30m`, `86400s` |
 | `ORIGIN__BASE_URL` | URL origin-сервера | `http://origin:8080` |
