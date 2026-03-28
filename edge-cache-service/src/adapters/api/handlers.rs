@@ -17,6 +17,29 @@ use crate::ports::origin::OriginResponse;
 use super::AppState;
 use super::error::ApiError;
 
+#[utoipa::path(
+    get,
+    path = "/download/{file_id}",
+    params(
+        ("file_id" = String, Path, description = "Уникальный идентификатор файла")
+    ),
+    responses(
+        (status = 200, description = "Содержимое файла",
+         content_type = "application/octet-stream",
+         headers(
+             ("X-Cache" = String, description = "Статус кэша: HIT — файл из кэша, TTL не истёк; MISS — файл загружен с origin; REVALIDATED — TTL истёк, origin подтвердил актуальность (304) или вернул новый контент (200)"),
+             ("Content-Type" = String, description = "MIME-тип файла, проксируется с origin-сервера"),
+             ("ETag" = String, description = "Entity tag, проксируется с origin-сервера (если присутствует)"),
+             ("Content-Length" = u64, description = "Размер файла в байтах (присутствует при HIT)")
+         )
+        ),
+        (status = 400, description = "Невалидный file_id"),
+        (status = 404, description = "Файл не найден на origin-сервере"),
+        (status = 500, description = "Внутренняя ошибка сервера"),
+        (status = 502, description = "Origin-сервер недоступен")
+    ),
+    tag = "files",
+)]
 pub async fn download(
     State(state): State<Arc<AppState>>,
     Path(file_id): Path<String>,
