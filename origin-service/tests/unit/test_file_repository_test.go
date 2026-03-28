@@ -37,6 +37,13 @@ func newTestStorage(t *testing.T) *repository.MinIOStorage {
 	storage, err := repository.NewMinIOStorage(ctx, endpoint, accessKey, secretKey, bucket, useSSL)
 	require.NoError(t, err, "failed to create MinIOStorage")
 
+	exists, err := storage.CheckBucketExists(ctx, bucket)
+	require.NoError(t, err, "failed to check bucket existence")
+	if !exists {
+		err = storage.CreateBucket(ctx, bucket)
+		require.NoError(t, err, "failed to create bucket")
+	}
+
 	// Очистка: удалить bucket и все его содержимое после теста
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

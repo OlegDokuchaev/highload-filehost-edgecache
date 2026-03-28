@@ -41,6 +41,22 @@ func main() {
 		slog.Error("storage init failed", "error", err)
 		os.Exit(1)
 	}
+
+	exists, err := db.CheckBucketExists(ctx, cfg.App.MinioBucket)
+	if err != nil {
+		slog.Error("failed to check bucket existence", "error", err)
+		os.Exit(1)
+	}
+	if !exists {
+		slog.Warn("bucket does not exist", "bucket", cfg.App.MinioBucket)
+		err = db.CreateBucket(ctx, cfg.App.MinioBucket)
+		if err != nil {
+			slog.Error("failed to create bucket", "error", err)
+			os.Exit(1)
+		}
+	}
+
+
 	fileRepo := repository.NewFileRepository(db)
 	uploadService := service.NewUploadService(fileRepo)
 	tokenVerifier := handlers.NewStubTokenVerifier()
