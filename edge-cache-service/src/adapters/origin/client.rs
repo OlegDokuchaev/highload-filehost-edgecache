@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use futures_util::StreamExt;
 
+use crate::adapters::LogOnErr;
 use crate::ports::origin::{ConditionalGetResult, OriginClient, OriginError, OriginResponse};
 
 use super::OriginSettings;
@@ -33,7 +34,8 @@ impl OriginClientImpl {
         let resp = req
             .send()
             .await
-            .map_err(|e| OriginError::Unavailable(e.into()))?;
+            .map_err(|e| OriginError::Unavailable(e.into()))
+            .error_on_err("origin request failed")?;
 
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(OriginError::NotFound);
@@ -77,10 +79,8 @@ impl OriginClientImpl {
 
     fn check_success(resp: &reqwest::Response) -> Result<(), OriginError> {
         if !resp.status().is_success() {
-            return Err(OriginError::Unavailable(anyhow::anyhow!(
-                "unexpected status {}",
-                resp.status()
-            )));
+            Err(anyhow::anyhow!("unexpected status {}", resp.status()))
+                .error_on_err("origin returned unexpected status")?;
         }
         Ok(())
     }
