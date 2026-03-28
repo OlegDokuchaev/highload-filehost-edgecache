@@ -4,6 +4,15 @@
 
 ## API
 
+### Документация
+
+| Endpoint | Описание |
+|---|---|
+| `GET /docs` | Swagger UI — интерактивный просмотр и тестирование API |
+| `GET /openapi.json` | OpenAPI-спецификация в формате JSON |
+
+### Endpoints
+
 ```
 GET /download/{file_id}
 ```
