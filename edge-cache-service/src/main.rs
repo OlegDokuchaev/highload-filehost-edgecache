@@ -2,11 +2,17 @@ use std::sync::Arc;
 
 use edge_cache_service::adapters::api::{ApiSettings, AppState};
 use edge_cache_service::adapters::cache::{CacheRepoImpl, CacheSettings};
+use edge_cache_service::adapters::logging::{self, LoggingSettings};
 use edge_cache_service::adapters::origin::{OriginClientImpl, OriginSettings};
 use edge_cache_service::application::download::DownloadUseCase;
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
+    // --- Logging ---
+    let logging_settings = LoggingSettings::load().expect("failed to load logging settings");
+    logging::init(&logging_settings);
+
     // --- Settings ---
     let cache_settings = CacheSettings::load().expect("failed to load cache settings");
     let origin_settings = OriginSettings::load().expect("failed to load origin settings");
@@ -30,7 +36,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&api_settings.listen_addr)
         .await
         .expect("failed to bind");
-    println!("EdgeCache listening on {}", api_settings.listen_addr);
+    info!(addr = %api_settings.listen_addr, "EdgeCache listening");
     axum::serve(listener, edge_cache_service::adapters::api::app(state))
         .await
         .unwrap();
