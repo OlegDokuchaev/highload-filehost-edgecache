@@ -19,6 +19,9 @@ thiserror = "2"
 config = "0.14"
 humantime-serde = "1"
 fs4 = { version = "0.13", features = ["tokio"] }
+utoipa = "5"
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 [dev-dependencies]
 mockall = "0.13"
