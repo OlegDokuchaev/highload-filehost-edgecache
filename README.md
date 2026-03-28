@@ -23,4 +23,4 @@ docker compose up -d --build
 
 * Users: `http://localhost:<users_port>/docs`
 * Origin: `http://localhost:<origin_port>/docs`
-* EdgeCache: `http://localhost:<edge_port>/healthz`
+* EdgeCache: `http://localhost:<edge_port>/docs`
