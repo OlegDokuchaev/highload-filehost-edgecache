@@ -7,6 +7,7 @@ pub use settings::*;
 use std::sync::Arc;
 
 use axum::Router;
+use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
@@ -37,5 +38,6 @@ pub fn app(state: Arc<AppState>) -> Router {
 
     router
         .merge(SwaggerUi::new("/docs").url("/openapi.json", api))
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
