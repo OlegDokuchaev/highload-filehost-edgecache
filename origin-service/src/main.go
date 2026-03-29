@@ -9,10 +9,10 @@ import (
 
 	"origin-service/config"
 	"origin-service/handlers"
-	"origin-service/swagger"
 	"origin-service/logger"
 	"origin-service/repository"
 	"origin-service/service"
+	"origin-service/swagger"
 )
 
 func main() {
@@ -57,7 +57,6 @@ func main() {
 		}
 	}
 
-
 	fileRepo := repository.NewFileRepository(db)
 	uploadService := service.NewUploadService(fileRepo)
 	tokenVerifier := handlers.NewStubTokenVerifier()
@@ -68,7 +67,6 @@ func main() {
 		cfg.App.DownloadURLExpiry,
 	)
 
-	
 	mux := http.NewServeMux()
 	urlHandler.Register(mux)
 	// Регистрируем /docs/ и /docs/swagger.yaml для Swagger UI

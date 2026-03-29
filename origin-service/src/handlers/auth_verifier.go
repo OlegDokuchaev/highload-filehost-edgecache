@@ -37,7 +37,6 @@ func (v *StubTokenVerifier) Verify(ctx context.Context, authHeader string) (stri
 	return userID, nil
 }
 
-
 // RemoteTokenVerifier проверяет JWT-токен через HTTP-запрос к внешнему сервису.
 type RemoteTokenVerifier struct {
 	client *http.Client

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	minio "github.com/minio/minio-go/v7"
+	credentials "github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 var ErrFileNotFound = errors.New("file not found")

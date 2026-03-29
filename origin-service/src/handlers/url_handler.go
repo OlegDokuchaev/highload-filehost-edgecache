@@ -1,16 +1,14 @@
 package handlers
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
-	"log/slog"
-	"context"
-	"io"
 
 	service "origin-service/service"
 )
@@ -144,53 +142,53 @@ func (h *URLHandler) getMyFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) getFileByID(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-        slog.Error("method not allowed", "method", r.Method)
-        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
+	if r.Method != http.MethodGet {
+		slog.Error("method not allowed", "method", r.Method)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-    fileID := strings.TrimPrefix(r.URL.Path, "/files/")
-    if fileID == "" {
-        slog.Warn("get file called with empty fileID")
-        writeError(w, http.StatusNotFound, "not found")
-        return
-    }
+	fileID := strings.TrimPrefix(r.URL.Path, "/files/")
+	if fileID == "" {
+		slog.Warn("get file called with empty fileID")
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
 
-    result, err := h.uploadService.DownloadByFileID(r.Context(), fileID)
-    if err != nil {
-        if errors.Is(err, service.ErrNotFound) {
-            slog.Warn("file not found", "fileID", fileID)
-            writeError(w, http.StatusNotFound, "not found")
-            return
-        }
-        slog.Error("failed to get file", "error", err, "fileID", fileID)
-        writeError(w, http.StatusInternalServerError, "internal error")
-        return
-    }
-    defer result.Reader.Close() // обязательно закрываем поток
+	result, err := h.uploadService.DownloadByFileID(r.Context(), fileID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			slog.Warn("file not found", "fileID", fileID)
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		slog.Error("failed to get file", "error", err, "fileID", fileID)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer result.Reader.Close() // обязательно закрываем поток
 
-    // Проверка If-None-Match
-    ifNoneMatch := strings.TrimSpace(r.Header.Get("If-None-Match"))
+	// Проверка If-None-Match
+	ifNoneMatch := strings.TrimSpace(r.Header.Get("If-None-Match"))
 	if matchETag(ifNoneMatch, result.ETag) {
-        w.Header().Set("ETag", result.ETag)
-        w.Header().Set("Cache-Control", h.cacheControlValue())
-        w.WriteHeader(http.StatusNotModified)
-        slog.Info("file not modified", "fileID", fileID)
-        return
-    }
+		w.Header().Set("ETag", result.ETag)
+		w.Header().Set("Cache-Control", h.cacheControlValue())
+		w.WriteHeader(http.StatusNotModified)
+		slog.Info("file not modified", "fileID", fileID)
+		return
+	}
 
-    // Устанавливаем заголовки
-    w.Header().Set("Content-Type", result.ContentType)
-    w.Header().Set("Cache-Control", h.cacheControlValue())
-    w.Header().Set("ETag", result.ETag)
-    w.WriteHeader(http.StatusOK)
+	// Устанавливаем заголовки
+	w.Header().Set("Content-Type", result.ContentType)
+	w.Header().Set("Cache-Control", h.cacheControlValue())
+	w.Header().Set("ETag", result.ETag)
+	w.WriteHeader(http.StatusOK)
 
-    // Стриминг содержимого
-    if _, err := io.Copy(w, result.Reader); err != nil {
-        slog.Error("failed to copy file content", "error", err, "fileID", fileID)
-    }
-    slog.Info("file downloaded", "fileID", fileID, "contentType", result.ContentType, "sizeBytes", result.Size)
+	// Стриминг содержимого
+	if _, err := io.Copy(w, result.Reader); err != nil {
+		slog.Error("failed to copy file content", "error", err, "fileID", fileID)
+	}
+	slog.Info("file downloaded", "fileID", fileID, "contentType", result.ContentType, "sizeBytes", result.Size)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -211,33 +209,28 @@ func (h *URLHandler) cacheControlValue() string {
 	return fmt.Sprintf("public, max-age=%d", h.cacheMaxAge)
 }
 
-func buildETag(data []byte) string {
-	sum := sha1.Sum(data)
-	return `"` + hex.EncodeToString(sum[:]) + `"`
-}
-
 // parseETag извлекает значение ETag и признак слабости из строки вида "abc" или W/"abc"
 func parseETag(s string) (value string, weak bool) {
-    s = strings.TrimSpace(s)
-    if strings.HasPrefix(s, "W/") {
-        weak = true
-        s = s[2:]
-    }
-    if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-        value = s[1 : len(s)-1]
-    }
-    return value, weak
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "W/") {
+		weak = true
+		s = s[2:]
+	}
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		value = s[1 : len(s)-1]
+	}
+	return value, weak
 }
 
 // matchETag проверяет, соответствует ли переданный клиентом If-None-Match серверному ETag
 func matchETag(ifNoneMatch string, serverETag string) bool {
-    if ifNoneMatch == "" {
-        return false
-    }
-    if ifNoneMatch == "*" {
-        return true
-    }
-    // Заголовок может содержать несколько ETag через запятую
+	if ifNoneMatch == "" {
+		return false
+	}
+	if ifNoneMatch == "*" {
+		return true
+	}
+	// Заголовок может содержать несколько ETag через запятую
 	slog.Info("ETag comparison 1", "If-None-Match", ifNoneMatch, "ETag", serverETag)
 	if strings.Contains(ifNoneMatch, ",") {
 		for _, etag := range strings.Split(ifNoneMatch, ",") {
@@ -257,5 +250,5 @@ func matchETag(ifNoneMatch string, serverETag string) bool {
 	if weakIfNoneMatch && weakServerETag {
 		return true
 	}
-    return false
+	return false
 }
