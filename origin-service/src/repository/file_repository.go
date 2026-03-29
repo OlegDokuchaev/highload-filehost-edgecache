@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/minio/minio-go/v7"
+	minio "github.com/minio/minio-go/v7"
 )
 
 type FileRepository struct {
