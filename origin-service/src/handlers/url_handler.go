@@ -211,11 +211,6 @@ func (h *URLHandler) cacheControlValue() string {
 	return fmt.Sprintf("public, max-age=%d", h.cacheMaxAge)
 }
 
-func buildETag(data []byte) string {
-	sum := sha1.Sum(data)
-	return `"` + hex.EncodeToString(sum[:]) + `"`
-}
-
 // parseETag извлекает значение ETag и признак слабости из строки вида "abc" или W/"abc"
 func parseETag(s string) (value string, weak bool) {
     s = strings.TrimSpace(s)
