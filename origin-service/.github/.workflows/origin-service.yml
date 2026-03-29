@@ -39,7 +39,7 @@ jobs:
         with:
           version: latest
           working-directory: ./origin-service/src/
-          args: --timeout=5m ./...
+          args: --timeout=5m ./origin-service/src/...
 
       - name: Run go fmt check
         run: |
