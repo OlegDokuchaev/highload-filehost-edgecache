@@ -12,6 +12,10 @@ on:
       - "origin-service/**"
       - ".github/workflows/origin-service.yml"
 
+defaults:
+  run:
+    working-directory: origin-service
+
 jobs:
   # ===========================
   # 1. Linting
@@ -34,7 +38,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          working-directory: ./
+          working-directory: ./origin-service/src/
           args: --timeout=5m ./...
 
       - name: Run go fmt check
