@@ -9,6 +9,7 @@ import (
 
 	"origin-service/config"
 	"origin-service/handlers"
+	"origin-service/swagger"
 	"origin-service/logger"
 	"origin-service/repository"
 	"origin-service/service"
@@ -26,15 +27,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// port := getEnv("APP_PORT", cfg.App.Port)
-	// minioEndpoint := getEnv("MINIO_ENDPOINT", cfg.App.MinioEndpoint)
-	// minioAccessKey := getEnv("MINIO_ACCESS_KEY", cfg.App.MinioAccessKey)
-	// minioSecretKey := getEnv("MINIO_SECRET_KEY", cfg.App.MinioSecretKey)
-	// minioBucket := getEnv("MINIO_BUCKET", cfg.App.MinioBucket)
-	// minioUseSSL := getEnvBool("MINIO_USE_SSL", cfg.App.MinioUseSSL)
-	// downloadBaseURL := getEnv("DOWNLOAD_BASE_URL", cfg.App.DownloadBaseURL)
-	// downloadURLExpiry := getEnvInt("DOWNLOAD_URL_EXPIRY", cfg.App.DownloadURLExpiry)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -50,6 +42,22 @@ func main() {
 		slog.Error("storage init failed", "error", err)
 		os.Exit(1)
 	}
+
+	exists, err := db.CheckBucketExists(ctx, cfg.App.MinioBucket)
+	if err != nil {
+		slog.Error("failed to check bucket existence", "error", err)
+		os.Exit(1)
+	}
+	if !exists {
+		slog.Warn("bucket does not exist", "bucket", cfg.App.MinioBucket)
+		err = db.CreateBucket(ctx, cfg.App.MinioBucket)
+		if err != nil {
+			slog.Error("failed to create bucket", "error", err)
+			os.Exit(1)
+		}
+	}
+
+
 	fileRepo := repository.NewFileRepository(db)
 	uploadService := service.NewUploadService(fileRepo)
 	tokenVerifier := handlers.NewStubTokenVerifier()
@@ -60,8 +68,11 @@ func main() {
 		cfg.App.DownloadURLExpiry,
 	)
 
+	
 	mux := http.NewServeMux()
 	urlHandler.Register(mux)
+	// Регистрируем /docs/ и /docs/swagger.yaml для Swagger UI
+	swagger.RegisterHandlers(mux)
 
 	slog.Info("origin-service starting", "port", cfg.App.Port, "minio_endpoint", cfg.App.MinioEndpoint, "minio_bucket", cfg.App.MinioBucket)
 
@@ -75,26 +86,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-// func getEnv(key, fallback string) string {
-// 	if value := os.Getenv(key); value != "" {
-// 		return value
-// 	}
-// 	return fallback
-// }
-
-// func getEnvBool(key string, fallback bool) bool {
-// 	if value := os.Getenv(key); value != "" {
-// 		return value == "true"
-// 	}
-// 	return fallback
-// }
-
-// func getEnvInt(key string, fallback int) int {
-// 	if value := os.Getenv(key); value != "" {
-// 		if i, err := strconv.Atoi(value); err == nil {
-// 			return i
-// 		}
-// 	}
-// 	return fallback
-// }

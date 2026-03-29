@@ -25,11 +25,7 @@ type FileMetadata struct {
 	ContentType string
 	Size        int64
 	UploadedAt  time.Time
-}
-
-type StoredFile struct {
-	Metadata FileMetadata
-	Data     []byte
+	Checksum    string
 }
 
 type MinIOStorage struct {
@@ -54,22 +50,33 @@ func NewMinIOStorage(
 		return nil, fmt.Errorf("init minio client: %w", err)
 	}
 
-	exists, err := client.BucketExists(ctx, bucket)
-	if err != nil {
-		slog.Error("failed to check bucket existence", "error", err)
-		return nil, fmt.Errorf("check bucket existence: %w", err)
-	}
-	if !exists {
-		if err = client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-			slog.Error("failed to create bucket", "error", err)
-			return nil, fmt.Errorf("create bucket: %w", err)
-		}
-	}
-
 	return &MinIOStorage{
 		Client: client,
 		bucket: bucket,
 	}, nil
+}
+
+func (s *MinIOStorage) CreateBucket(ctx context.Context, bucket string) error {
+	exists, err := s.Client.BucketExists(ctx, bucket)
+	if err != nil {
+		return fmt.Errorf("check bucket existence: %w", err)
+	}
+	if exists {
+		return fmt.Errorf("bucket %s already exists", bucket)
+	}
+	err = s.Client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
+	if err != nil {
+		return fmt.Errorf("create bucket: %w", err)
+	}
+	return nil
+}
+
+func (s *MinIOStorage) CheckBucketExists(ctx context.Context, bucket string) (bool, error) {
+	exists, err := s.Client.BucketExists(ctx, bucket)
+	if err != nil {
+		return false, fmt.Errorf("check bucket existence: %w", err)
+	}
+	return exists, nil
 }
 
 func (s *MinIOStorage) saveMetadata(ctx context.Context, meta FileMetadata) error {
