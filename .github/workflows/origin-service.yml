@@ -55,6 +55,7 @@ jobs:
 
       - name: Run go vet
         run: go vet ./...
+        working-directory: ./origin-service/src
 
   # ===========================
   # 2. Unit tests
