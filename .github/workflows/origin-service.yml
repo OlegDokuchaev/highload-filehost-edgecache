@@ -29,6 +29,14 @@ jobs:
         with:
           go-version: '1.22'
           cache: true
+          
+      - name: Download dependencies
+        run: go mod tidy
+        working-directory: ./origin-service/src
+      
+      - name: Build (warm up cache)
+        run: go build ./...
+        working-directory: ./origin-service/src
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
