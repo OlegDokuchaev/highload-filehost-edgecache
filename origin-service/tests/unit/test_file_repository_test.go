@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	repository "origin-service/repository"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	repository "origin-service/repository"
 )
 
 // newTestStorage создает новый MinIOStorage, подключенный к тестовому экземпляру MinIO.
