@@ -74,11 +74,11 @@ jobs:
 
       - name: Run unit tests via docker-compose
         run: |
-          docker-compose up --build --abort-on-container-exit test-unit
+          docker compose up --build --abort-on-container-exit test-unit --exit-code-from test-unit
           
       - name: Clean up containers
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
 
   # ==========================================
   # 3. Integration tests
