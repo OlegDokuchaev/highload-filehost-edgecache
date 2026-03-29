@@ -78,7 +78,7 @@ jobs:
           
       - name: Clean up containers
         if: always()
-        run: docker compose down -v
+        run: docker compose -f origin-service/docker-compose.yml down -v
 
   # ==========================================
   # 3. Integration tests
@@ -102,4 +102,4 @@ jobs:
 
       - name: Clean up containers
         if: always()
-        run: docker compose down -v
+        run: docker compose -f origin-service/docker-compose.yml down -v
