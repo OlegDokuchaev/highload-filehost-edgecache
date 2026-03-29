@@ -74,7 +74,7 @@ jobs:
 
       - name: Run unit tests via docker-compose
         run: |
-          docker compose -f docker-compose.yml up --build --abort-on-container-exit test-unit --exit-code-from test-unit
+          docker compose -f origin-service/docker-compose.yml up --build --abort-on-container-exit test-unit --exit-code-from test-unit
           
       - name: Clean up containers
         if: always()
@@ -98,7 +98,7 @@ jobs:
 
       - name: Run integration tests via docker-compose
         run: |
-          docker compose -f docker-compose.yml up --build --abort-on-container-exit test-integration
+          docker compose -f origin-service/docker-compose.yml up --build --abort-on-container-exit test-integration --exit-code-from test-unit
 
       - name: Clean up containers
         if: always()
