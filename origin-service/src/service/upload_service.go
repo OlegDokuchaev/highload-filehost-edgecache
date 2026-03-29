@@ -35,10 +35,10 @@ type FileInfo struct {
 }
 
 type FileContent struct {
-    Reader      io.ReadCloser
-    ContentType string
-    Size        int64
-    ETag        string
+	Reader      io.ReadCloser
+	ContentType string
+	Size        int64
+	ETag        string
 }
 
 type UploadService struct {
@@ -112,42 +112,42 @@ func (s *UploadService) ListByUserID(userID string) ([]FileInfo, error) {
 }
 
 func (s *UploadService) DownloadByFileID(ctx context.Context, fileID string) (*FileContent, error) {
-    if fileID == "" {
-        slog.Warn("download called with empty fileID")
-        return nil, ErrNotFound
-    }
+	if fileID == "" {
+		slog.Warn("download called with empty fileID")
+		return nil, ErrNotFound
+	}
 
-    stream, err := s.repo.GetFile(ctx, fileID)
-    if err != nil {
-        if err == repository.ErrFileNotFound {
-            slog.Warn("file not found", "fileID", fileID)
-            return nil, ErrNotFound
-        }
-        slog.Error("failed to get file", "error", err, "fileID", fileID)
-        return nil, err
-    }
+	stream, err := s.repo.GetFile(ctx, fileID)
+	if err != nil {
+		if err == repository.ErrFileNotFound {
+			slog.Warn("file not found", "fileID", fileID)
+			return nil, ErrNotFound
+		}
+		slog.Error("failed to get file", "error", err, "fileID", fileID)
+		return nil, err
+	}
 
-    contentType := stream.Metadata.ContentType
-    if contentType == "" {
-        contentType = "application/octet-stream"
-    }
+	contentType := stream.Metadata.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 
-    // Формируем ETag
-    var etag string
-    if stream.Metadata.Checksum != "" {
-        // etag = `"` + stream.Metadata.Checksum + `"`
-        etag = stream.Metadata.Checksum
-    } else {
-        // Слабый ETag для старых файлов
-        etag = fmt.Sprintf(`W/"%d-%d"`, stream.Metadata.Size, stream.Metadata.UploadedAt.Unix())
-    }
+	// Формируем ETag
+	var etag string
+	if stream.Metadata.Checksum != "" {
+		// etag = `"` + stream.Metadata.Checksum + `"`
+		etag = stream.Metadata.Checksum
+	} else {
+		// Слабый ETag для старых файлов
+		etag = fmt.Sprintf(`W/"%d-%d"`, stream.Metadata.Size, stream.Metadata.UploadedAt.Unix())
+	}
 
-    return &FileContent{
-        Reader:      stream.Reader,
-        ContentType: contentType,
-        Size:        stream.Metadata.Size,
-        ETag:        etag,
-    }, nil
+	return &FileContent{
+		Reader:      stream.Reader,
+		ContentType: contentType,
+		Size:        stream.Metadata.Size,
+		ETag:        etag,
+	}, nil
 }
 
 func mapFileMetadata(meta *repository.FileMetadata) *FileInfo {
