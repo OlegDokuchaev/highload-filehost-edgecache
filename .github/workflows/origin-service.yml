@@ -34,7 +34,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          working-directory: ./
+          working-directory: ./origin-service/src
           args: --timeout=5m ./...
 
       - name: Run go fmt check
