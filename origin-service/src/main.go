@@ -9,6 +9,7 @@ import (
 
 	"origin-service/config"
 	"origin-service/handlers"
+	"origin-service/swagger"
 	"origin-service/logger"
 	"origin-service/repository"
 	"origin-service/service"
@@ -67,8 +68,11 @@ func main() {
 		cfg.App.DownloadURLExpiry,
 	)
 
+	
 	mux := http.NewServeMux()
 	urlHandler.Register(mux)
+	// Регистрируем /docs/ и /docs/swagger.yaml для Swagger UI
+	swagger.RegisterHandlers(mux)
 
 	slog.Info("origin-service starting", "port", cfg.App.Port, "minio_endpoint", cfg.App.MinioEndpoint, "minio_bucket", cfg.App.MinioBucket)
 

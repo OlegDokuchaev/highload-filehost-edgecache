@@ -172,7 +172,7 @@ func (h *URLHandler) getFileByID(w http.ResponseWriter, r *http.Request) {
 
     // Проверка If-None-Match
     ifNoneMatch := strings.TrimSpace(r.Header.Get("If-None-Match"))
-    if ifNoneMatch != "" && ifNoneMatch == result.ETag {
+	if matchETag(ifNoneMatch, result.ETag) {
         w.Header().Set("ETag", result.ETag)
         w.Header().Set("Cache-Control", h.cacheControlValue())
         w.WriteHeader(http.StatusNotModified)
@@ -189,7 +189,6 @@ func (h *URLHandler) getFileByID(w http.ResponseWriter, r *http.Request) {
     // Стриминг содержимого
     if _, err := io.Copy(w, result.Reader); err != nil {
         slog.Error("failed to copy file content", "error", err, "fileID", fileID)
-        // Заголовки уже отправлены, ошибку клиенту не вернуть – только лог
     }
     slog.Info("file downloaded", "fileID", fileID, "contentType", result.ContentType, "sizeBytes", result.Size)
 }
@@ -215,4 +214,48 @@ func (h *URLHandler) cacheControlValue() string {
 func buildETag(data []byte) string {
 	sum := sha1.Sum(data)
 	return `"` + hex.EncodeToString(sum[:]) + `"`
+}
+
+// parseETag извлекает значение ETag и признак слабости из строки вида "abc" или W/"abc"
+func parseETag(s string) (value string, weak bool) {
+    s = strings.TrimSpace(s)
+    if strings.HasPrefix(s, "W/") {
+        weak = true
+        s = s[2:]
+    }
+    if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+        value = s[1 : len(s)-1]
+    }
+    return value, weak
+}
+
+// matchETag проверяет, соответствует ли переданный клиентом If-None-Match серверному ETag
+func matchETag(ifNoneMatch string, serverETag string) bool {
+    if ifNoneMatch == "" {
+        return false
+    }
+    if ifNoneMatch == "*" {
+        return true
+    }
+    // Заголовок может содержать несколько ETag через запятую
+	slog.Info("ETag comparison 1", "If-None-Match", ifNoneMatch, "ETag", serverETag)
+	if strings.Contains(ifNoneMatch, ",") {
+		for _, etag := range strings.Split(ifNoneMatch, ",") {
+			if etag == serverETag {
+				return true
+			}
+		}
+		return false
+	}
+
+	ifNoneMatch, weakIfNoneMatch := parseETag(ifNoneMatch)
+	serverETag, weakServerETag := parseETag(serverETag)
+	slog.Info("ETag comparison 2", "If-None-Match", ifNoneMatch, "ETag", serverETag)
+	if ifNoneMatch == serverETag {
+		return true
+	}
+	if weakIfNoneMatch && weakServerETag {
+		return true
+	}
+    return false
 }

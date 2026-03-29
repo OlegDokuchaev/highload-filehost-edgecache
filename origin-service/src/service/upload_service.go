@@ -135,9 +135,10 @@ func (s *UploadService) DownloadByFileID(ctx context.Context, fileID string) (*F
     // Формируем ETag
     var etag string
     if stream.Metadata.Checksum != "" {
-        etag = `"` + stream.Metadata.Checksum + `"`
+        // etag = `"` + stream.Metadata.Checksum + `"`
+        etag = stream.Metadata.Checksum
     } else {
-        // Слабый ETag для старых файлов (без хеша)
+        // Слабый ETag для старых файлов
         etag = fmt.Sprintf(`W/"%d-%d"`, stream.Metadata.Size, stream.Metadata.UploadedAt.Unix())
     }
 

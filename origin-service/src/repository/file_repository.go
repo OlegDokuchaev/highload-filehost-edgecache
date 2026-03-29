@@ -134,6 +134,7 @@ func (r *FileRepository) UploadFile(
 
     // Сохраняем хеш
     meta.Checksum = hex.EncodeToString(hasher.Sum(nil))
+    slog.Info("calculated checksum", "fileID", fileID, "checksum", meta.Checksum)
 
     if err := r.db.saveMetadata(ctx, meta); err != nil {
         slog.Error("failed to save metadata, attempting to delete uploaded object",
