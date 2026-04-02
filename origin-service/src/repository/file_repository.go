@@ -33,20 +33,33 @@ func (r *FileRepository) GetFile(ctx context.Context, fileID string) (*FileStrea
 		return nil, fmt.Errorf("fileID is required")
 	}
 
-	meta, err := r.db.loadMetadata(ctx, fileID)
+	objectKey, err := r.db.findObjectKeyByFileID(ctx, fileID)
 	if err != nil {
 		if errors.Is(err, ErrFileNotFound) {
-			slog.Warn("file metadata not found", "fileID", fileID)
-		} else {
-			slog.Error("failed to load metadata", "error", err, "fileID", fileID)
+			slog.Warn("file not found by id", "fileID", fileID)
+			return nil, ErrFileNotFound
 		}
-		return nil, ErrFileNotFound
+		slog.Error("failed to resolve object key", "error", err, "fileID", fileID)
+		return nil, fmt.Errorf("resolve object key: %w", err)
 	}
 
-	obj, err := r.db.Client.GetObject(ctx, r.db.bucket, meta.ObjectName, minio.GetObjectOptions{})
+	obj, err := r.db.Client.GetObject(ctx, r.db.bucket, objectKey, minio.GetObjectOptions{})
 	if err != nil {
-		slog.Error("failed to get object from MinIO", "error", err, "fileID", fileID, "object", meta.ObjectName)
+		slog.Error("failed to get object from MinIO", "error", err, "fileID", fileID, "object", objectKey)
 		return nil, fmt.Errorf("get object: %w", err)
+	}
+
+	stat, err := obj.Stat()
+	if err != nil {
+		_ = obj.Close()
+		slog.Error("failed to stat object", "error", err, "fileID", fileID, "object", objectKey)
+		return nil, fmt.Errorf("stat object: %w", err)
+	}
+	meta, err := fileMetadataFromObjectInfo(stat)
+	if err != nil {
+		_ = obj.Close()
+		slog.Error("invalid object metadata", "error", err, "fileID", fileID, "object", objectKey)
+		return nil, fmt.Errorf("parse metadata: %w", err)
 	}
 
 	return &FileStream{
@@ -61,18 +74,14 @@ func (r *FileRepository) ListFilesByUserID(userID string) ([]FileMetadata, error
 		return nil, fmt.Errorf("userID is required")
 	}
 
-	allMetas, err := r.db.listAllMetadata(context.Background())
+	allMetas, err := r.db.listFileMetadataByUserPrefix(context.Background(), userID)
 	if err != nil {
 		slog.Error("failed to list metadata", "error", err)
 		return nil, err
 	}
 
-	items := make([]FileMetadata, 0)
-	for _, meta := range allMetas {
-		if meta.UserID == userID {
-			items = append(items, meta)
-		}
-	}
+	items := make([]FileMetadata, 0, len(allMetas))
+	items = append(items, allMetas...)
 	slog.Debug("listed files", "userID", userID, "count", len(items))
 	return items, nil
 }
@@ -120,31 +129,25 @@ func (r *FileRepository) UploadFile(
 	teeReader := io.TeeReader(reader, hasher)
 
 	_, err = r.db.Client.PutObject(ctx, r.db.bucket, meta.ObjectName, teeReader, meta.Size, minio.PutObjectOptions{
-		ContentType: contentType,
-		UserMetadata: map[string]string{
-			"fileId": meta.FileID,
-			"userId": meta.UserID,
-		},
+		ContentType:  contentType,
+		UserMetadata: metaUserMap(meta),
 	})
 	if err != nil {
 		slog.Error("failed to put object to MinIO", "error", err, "fileID", fileID, "object", meta.ObjectName)
 		return nil, fmt.Errorf("put object: %w", err)
 	}
 
-	// Сохраняем хеш
 	meta.Checksum = hex.EncodeToString(hasher.Sum(nil))
 	slog.Info("calculated checksum", "fileID", fileID, "checksum", meta.Checksum)
 
-	if err := r.db.saveMetadata(ctx, meta); err != nil {
-		slog.Error("failed to save metadata, attempting to delete uploaded object",
+	if err := r.db.copyObjectWithUserMeta(ctx, meta.ObjectName, meta); err != nil {
+		slog.Error("failed to attach checksum to object metadata, removing object",
 			"error", err, "object", meta.ObjectName)
-
 		delErr := r.db.Client.RemoveObject(ctx, r.db.bucket, meta.ObjectName, minio.RemoveObjectOptions{})
 		if delErr != nil {
-			slog.Error("failed to delete orphaned object",
-				"error", delErr, "object", meta.ObjectName)
+			slog.Error("failed to delete orphaned object", "error", delErr, "object", meta.ObjectName)
 		}
-		return nil, fmt.Errorf("save metadata: %w", err)
+		return nil, err
 	}
 
 	slog.Info("file uploaded to repository", "fileID", fileID, "userID", userID, "object", meta.ObjectName)
