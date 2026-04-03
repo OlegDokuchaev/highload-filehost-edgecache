@@ -6,6 +6,7 @@ logging:
 
 app:
   port: "8080"
+  max_upload_size_bytes: 52428800  # 50 MiB
   minio_endpoint: "minio:9000"
   minio_access_key: "minioadmin"
   minio_secret_key: "minioadmin"

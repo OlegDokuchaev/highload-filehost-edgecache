@@ -58,7 +58,7 @@ func main() {
 	}
 
 	fileRepo := repository.NewFileRepository(db)
-	uploadService := service.NewUploadService(fileRepo)
+	uploadService := service.NewUploadService(fileRepo, cfg.App.MaxUploadSizeBytes)
 	tokenVerifier := handlers.NewStubTokenVerifier()
 	urlHandler := handlers.NewURLHandler(
 		uploadService,

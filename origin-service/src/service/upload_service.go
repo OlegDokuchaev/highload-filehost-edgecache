@@ -10,8 +10,6 @@ import (
 	"origin-service/repository"
 )
 
-const defaultMaxUploadSizeBytes int64 = 50 * 1024 * 1024
-
 var (
 	ErrPayloadTooLarge = fmt.Errorf("payload too large")
 	ErrNotFound        = fmt.Errorf("not found")
@@ -46,10 +44,10 @@ type UploadService struct {
 	maxUploadSize int64
 }
 
-func NewUploadService(repo *repository.FileRepository) *UploadService {
+func NewUploadService(repo *repository.FileRepository, maxUploadSizeBytes int64) *UploadService {
 	return &UploadService{
 		repo:          repo,
-		maxUploadSize: defaultMaxUploadSizeBytes,
+		maxUploadSize: maxUploadSizeBytes,
 	}
 }
 
