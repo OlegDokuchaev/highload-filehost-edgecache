@@ -93,8 +93,8 @@ func TestUploadFile(t *testing.T) {
 	assert.Equal(t, contentType, metadata.ContentType)
 	assert.Equal(t, size, metadata.Size)
 	assert.False(t, metadata.UploadedAt.IsZero())
-	// ObjectName должен быть в формате userID/fileID/fileName
-	expectedPrefix := userID + "/" + metadata.FileID + "/"
+	// ObjectName: files/{userID}/{fileID}/{fileName}
+	expectedPrefix := "files/" + userID + "/" + metadata.FileID + "/"
 	assert.Contains(t, metadata.ObjectName, expectedPrefix)
 	assert.True(t, strings.HasSuffix(metadata.ObjectName, fileName))
 
