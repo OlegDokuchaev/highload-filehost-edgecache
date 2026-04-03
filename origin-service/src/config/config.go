@@ -22,14 +22,14 @@ type LoggingConfig struct {
 }
 
 type AppConfig struct {
-	Port              string `yaml:"port"`
-	MinioEndpoint     string `yaml:"minio_endpoint"`
-	MinioAccessKey    string `yaml:"minio_access_key"`
-	MinioSecretKey    string `yaml:"minio_secret_key"`
-	MinioBucket       string `yaml:"minio_bucket"`
-	MinioUseSSL       bool   `yaml:"minio_use_ssl"`
-	DownloadBaseURL   string `yaml:"download_base_url"`
-	DownloadURLExpiry int    `yaml:"download_url_expiry"`
+	Port               string `yaml:"port"`
+	MinioEndpoint      string `yaml:"minio_endpoint"`
+	MinioAccessKey     string `yaml:"minio_access_key"`
+	MinioSecretKey     string `yaml:"minio_secret_key"`
+	MinioBucket        string `yaml:"minio_bucket"`
+	MinioUseSSL        bool   `yaml:"minio_use_ssl"`
+	DownloadBaseURL    string `yaml:"download_base_url"`
+	DownloadURLExpiry  int    `yaml:"download_url_expiry"`
 	AuthVerifyURL      string `yaml:"auth_verify_url"`
 	MaxUploadSizeBytes int64  `yaml:"max_upload_size_bytes"`
 }
