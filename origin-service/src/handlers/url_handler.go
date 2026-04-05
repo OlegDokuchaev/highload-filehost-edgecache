@@ -206,7 +206,7 @@ func (h *URLHandler) buildDownloadURL(fileID string) string {
 }
 
 func (h *URLHandler) cacheControlValue() string {
-	return fmt.Sprintf("public, max-age=%d", h.cacheMaxAge)
+	return fmt.Sprintf("public, s-maxage=%d, max-age=%d", h.cacheMaxAge, h.cacheMaxAge)
 }
 
 // parseETag извлекает значение ETag и признак слабости из строки вида "abc" или W/"abc"

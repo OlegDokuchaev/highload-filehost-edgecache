@@ -18,7 +18,7 @@ import (
 func newTestUploadService(t *testing.T) *service.UploadService {
 	storage := newTestStorage(t)
 	repo := repository.NewFileRepository(storage)
-	return service.NewUploadService(repo)
+	return service.NewUploadService(repo, 50*1024*1024)
 }
 
 // TestUpload_Success проверяет успешную загрузку файла.

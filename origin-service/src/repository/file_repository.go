@@ -61,20 +61,13 @@ func (r *FileRepository) ListFilesByUserID(userID string) ([]FileMetadata, error
 		return nil, fmt.Errorf("userID is required")
 	}
 
-	allMetas, err := r.db.listAllMetadata(context.Background())
+	allMetas, err := r.db.listMetadataByUserID(context.Background(), userID)
 	if err != nil {
 		slog.Error("failed to list metadata", "error", err)
 		return nil, err
 	}
-
-	items := make([]FileMetadata, 0)
-	for _, meta := range allMetas {
-		if meta.UserID == userID {
-			items = append(items, meta)
-		}
-	}
-	slog.Debug("listed files", "userID", userID, "count", len(items))
-	return items, nil
+	slog.Debug("listed files", "userID", userID, "count", len(allMetas))
+	return allMetas, nil
 }
 
 func (r *FileRepository) UploadFile(
@@ -107,7 +100,7 @@ func (r *FileRepository) UploadFile(
 	meta := FileMetadata{
 		FileID:      fileID,
 		UserID:      userID,
-		ObjectName:  buildObjectName(userID, fileID, fileName),
+		ObjectName:  buildContentObjectKey(userID, fileID, fileName),
 		FileName:    fileName,
 		ContentType: contentType,
 		Size:        size,
@@ -136,14 +129,12 @@ func (r *FileRepository) UploadFile(
 	slog.Info("calculated checksum", "fileID", fileID, "checksum", meta.Checksum)
 
 	if err := r.db.saveMetadata(ctx, meta); err != nil {
-		slog.Error("failed to save metadata, attempting to delete uploaded object",
+		slog.Error("failed to save metadata, attempting to delete uploaded object and metadata keys",
 			"error", err, "object", meta.ObjectName)
 
-		delErr := r.db.Client.RemoveObject(ctx, r.db.bucket, meta.ObjectName, minio.RemoveObjectOptions{})
-		if delErr != nil {
-			slog.Error("failed to delete orphaned object",
-				"error", delErr, "object", meta.ObjectName)
-		}
+		_ = r.db.Client.RemoveObject(ctx, r.db.bucket, meta.ObjectName, minio.RemoveObjectOptions{})
+		_ = r.db.Client.RemoveObject(ctx, r.db.bucket, buildSidecarMetaKey(userID, fileID), minio.RemoveObjectOptions{})
+		_ = r.db.Client.RemoveObject(ctx, r.db.bucket, buildFileIndexKey(fileID), minio.RemoveObjectOptions{})
 		return nil, fmt.Errorf("save metadata: %w", err)
 	}
 
