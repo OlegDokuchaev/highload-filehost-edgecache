@@ -1,0 +1,79 @@
+name: Edge Cache Service CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "edge-cache-service/**"
+      - ".github/workflows/edge-cache-service.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "edge-cache-service/**"
+      - ".github/workflows/edge-cache-service.yml"
+
+defaults:
+  run:
+    working-directory: edge-cache-service
+
+jobs:
+  # ===========================
+  # 1. Linting
+  # ===========================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - &checkout
+        name: Checkout sources
+        uses: actions/checkout@v4
+
+      - &toolchain
+        name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - &cache
+        name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edge-cache-service
+
+      - name: Run fmt check
+        run: make fmt-check
+
+      - name: Run clippy
+        run: make clippy
+
+  # ===========================
+  # 2. Unit tests
+  # ===========================
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - *checkout
+      - *toolchain
+      - *cache
+
+      - name: Run unit tests
+        run: make unit
+
+  # ==========================================
+  # 3. Integration tests
+  # ==========================================
+  integration:
+    name: Integration tests
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    needs: unit
+
+    steps:
+      - *checkout
+      - *toolchain
+      - *cache
+
+      - name: Run integration tests
+        run: make integration
