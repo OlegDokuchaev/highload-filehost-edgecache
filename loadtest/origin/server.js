@@ -1,7 +1,7 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
 
-const PORT = parseInt(process.env.ORIGIN_PORT || "9090");
+const PORT = parseInt(process.env.ORIGIN_PORT || "8080");
 
 // File size is encoded in file_id prefix: "1kb-v1i42" → 1024 bytes.
 const SIZES = {

@@ -99,22 +99,3 @@ make fmt-check
 # Линтер
 make clippy
 ```
-
-## Нагрузочное тестирование
-
-Требования: [k6](https://grafana.com/docs/k6/), Node.js
-
-```bash
-# Запустить mock origin (генерирует файлы по file_id на лету)
-make k6-origin &
-
-# Запустить EdgeCache
-cargo run --release &
-
-# Сценарии
-make k6-cold       # Cold cache — уникальные файлы, 10 VU × 500 итераций
-make k6-warm       # Warm cache — 200 RPS из кэша
-make k6-hot        # Hot key — 500 RPS на один файл (coalescing)
-```
-
-Результаты сохраняются в `k6/results/`. Отчёт: `k6/PERF-REPORT.md`.

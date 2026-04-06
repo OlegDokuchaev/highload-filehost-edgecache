@@ -15,4 +15,3 @@ app:
   download_base_url: "http://localhost:8080"
   download_url_expiry: 3600
   auth_verify_url: "http://users-service:8081/auth/verify"
-`
