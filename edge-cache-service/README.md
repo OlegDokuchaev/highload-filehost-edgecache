@@ -99,8 +99,3 @@ make fmt-check
 # Линтер
 make clippy
 ```
-
-## Нагрузочное тестирование
-
-Нагрузочные тесты вынесены в общую директорию `loadtest/` в корне репозитория.
-Там же находятся сценарии для сравнения origin vs edge-cache. Подробности: [`loadtest/README.md`](../loadtest/README.md).
