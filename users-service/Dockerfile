@@ -16,7 +16,7 @@ RUN python -c "from pathlib import Path; p=Path('scripts/entrypoint.sh'); p.writ
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-EXPOSE 8001
+EXPOSE 8081
 
 # На Windows файл может быть с CRLF, из-за чего прямой exec падает
 # ("no such file or directory" из-за /bin/sh\r). Запускаем через sh.
