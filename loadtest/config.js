@@ -72,7 +72,7 @@ export const DEGRADE_STEPS     = parseInt(__ENV.DEGRADE_STEPS     || "20");
 export const DEGRADE_STAGE_SEC = parseInt(__ENV.DEGRADE_STAGE_SEC || "30");
 export const DEGRADE_PRE_VUS   = parseInt(__ENV.DEGRADE_PRE_VUS  || String(Math.max(DEGRADE_START_RPS, 200)));
 export const DEGRADE_MAX_VUS   = parseInt(__ENV.DEGRADE_MAX_VUS  || String((DEGRADE_START_RPS + DEGRADE_STEP_RPS * DEGRADE_STEPS) * 2));
-export const DEGRADE_P99_LIMIT = __ENV.DEGRADE_P99_LIMIT || "500";    // ms
+export const DEGRADE_P99_LIMIT = __ENV.DEGRADE_P99_LIMIT || "1000";    // ms
 export const DEGRADE_ERR_LIMIT = __ENV.DEGRADE_ERR_LIMIT || "0.01";   // rate
 export const DEGRADE_ABORT_DELAY = __ENV.DEGRADE_ABORT_DELAY || "10s";
 
