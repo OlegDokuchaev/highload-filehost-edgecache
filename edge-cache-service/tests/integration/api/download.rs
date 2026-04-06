@@ -50,6 +50,7 @@ async fn setup_with(origin: MockOriginClient) -> Env {
     let cache = CacheRepoImpl::new(CacheSettings {
         dir: cache_dir.to_str().unwrap().to_string(),
         default_ttl: Duration::from_secs(3600),
+        read_buf_size: 64 * 1024,
     });
     let state = Arc::new(AppState {
         download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),
@@ -77,6 +78,7 @@ async fn setup_with_ttl(origin: MockOriginClient, default_ttl: Duration) -> Env 
     let cache = CacheRepoImpl::new(CacheSettings {
         dir: cache_dir.to_str().unwrap().to_string(),
         default_ttl,
+        read_buf_size: 64 * 1024,
     });
     let state = Arc::new(AppState {
         download: DownloadUseCase::new(Arc::new(cache), Arc::new(origin)),

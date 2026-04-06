@@ -14,6 +14,7 @@ use tokio_util::io::ReaderStream;
 pub struct CacheRepoImpl {
     cache_dir: PathBuf,
     default_ttl: Duration,
+    read_buf_size: usize,
 }
 
 impl CacheRepoImpl {
@@ -21,6 +22,7 @@ impl CacheRepoImpl {
         Self {
             cache_dir: PathBuf::from(settings.dir),
             default_ttl: settings.default_ttl,
+            read_buf_size: settings.read_buf_size,
         }
     }
 }
@@ -43,7 +45,7 @@ impl CacheRepo for CacheRepoImpl {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e).warn_on_err("cache data read failed")?,
         };
-        let stream = Box::pin(ReaderStream::new(file));
+        let stream = Box::pin(ReaderStream::with_capacity(file, self.read_buf_size));
 
         Ok(Some(CachedFile { meta, stream }))
     }
