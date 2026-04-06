@@ -15,13 +15,14 @@ RUN touch src/main.rs && cargo build --release
 # -----------------------------------------------------------
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates gosu && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --shell /bin/bash app
-USER app
 
 WORKDIR /app
 
 COPY --from=builder /app/target/release/edge-cache-service .
+COPY entrypoint.sh /usr/local/bin/
 
+ENTRYPOINT ["entrypoint.sh"]
 CMD ["./edge-cache-service"]
