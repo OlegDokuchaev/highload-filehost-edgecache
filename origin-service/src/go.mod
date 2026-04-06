@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/minio/minio-go/v7 v7.0.83
+	github.com/stretchr/testify v1.9.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
