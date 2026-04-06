@@ -4,14 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: origin-service
-    # env_file:
-    #   - .env
-    # environment:
-    #   - name=value
     depends_on:
       minio:
-        condition: service_started
-      stub:
         condition: service_started
     ports:
       - "8080:8080"
@@ -87,6 +81,8 @@ services:
     container_name: test-integration
     depends_on:
       origin-test:
+        condition: service_started
+      stub:
         condition: service_started
     restart: "no"
 
