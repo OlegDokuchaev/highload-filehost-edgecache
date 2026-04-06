@@ -161,6 +161,8 @@ HOT_RPS=1000 k6 run scenarios/cache-hot-key.js
 - `results/<scenario>.md` — человекочитаемый отчёт
 - `results/<scenario>.json` — полный JSON с метриками k6
 
+Сводный анализ и сравнение Origin vs Cache — в [RESULTS.md](RESULTS.md).
+
 ## Makefile targets
 
 | Target | Описание |

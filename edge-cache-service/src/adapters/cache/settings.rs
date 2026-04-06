@@ -8,6 +8,7 @@ pub struct CacheSettings {
     pub dir: String,
     #[serde(with = "humantime_serde")]
     pub default_ttl: Duration,
+    pub read_buf_size: usize,
 }
 
 impl CacheSettings {

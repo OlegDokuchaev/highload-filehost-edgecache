@@ -7,15 +7,15 @@ export const CACHE_URL  = __ENV.CACHE_URL  || "http://localhost:3000";
 // ---------------------------------------------------------------------------
 // Cache cold scenario
 // ---------------------------------------------------------------------------
-export const COLD_VUS        = parseInt(__ENV.COLD_VUS || "10");
-export const COLD_ITERATIONS = parseInt(__ENV.COLD_ITERATIONS || "500");
+export const COLD_VUS        = parseInt(__ENV.COLD_VUS || "20");
+export const COLD_ITERATIONS = parseInt(__ENV.COLD_ITERATIONS || "1000");
 
 // ---------------------------------------------------------------------------
 // Cache warm scenario
 // ---------------------------------------------------------------------------
-export const WARM_VUS        = parseInt(__ENV.WARM_VUS || "20");
-export const WARM_RPS        = parseInt(__ENV.WARM_RPS || "200");
-export const WARM_DURATION   = __ENV.WARM_DURATION || "30s";
+export const WARM_VUS        = parseInt(__ENV.WARM_VUS || "30");
+export const WARM_RPS        = parseInt(__ENV.WARM_RPS || "300");
+export const WARM_DURATION   = __ENV.WARM_DURATION || "60s";
 export const WARM_START_TIME = __ENV.WARM_START_TIME || "10s";
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ export const WARM_START_TIME = __ENV.WARM_START_TIME || "10s";
 // ---------------------------------------------------------------------------
 export const HOT_VUS      = parseInt(__ENV.HOT_VUS || "50");
 export const HOT_RPS      = parseInt(__ENV.HOT_RPS || "500");
-export const HOT_DURATION = __ENV.HOT_DURATION || "30s";
+export const HOT_DURATION = __ENV.HOT_DURATION || "60s";
 export const HOT_FILE_ID  = __ENV.HOT_FILE_ID || "1mb-hot-0";
 
 // ---------------------------------------------------------------------------
@@ -66,13 +66,13 @@ function pickWeightedPrefix(seed) {
 // Degradation (breakpoint) scenarios
 // ---------------------------------------------------------------------------
 export const DEGRADE_FILE_ID  = __ENV.DEGRADE_FILE_ID || "1mb-degrade-0";
-export const DEGRADE_START_RPS = parseInt(__ENV.DEGRADE_START_RPS || "100");
-export const DEGRADE_STEP_RPS  = parseInt(__ENV.DEGRADE_STEP_RPS  || "200");
-export const DEGRADE_STEPS     = parseInt(__ENV.DEGRADE_STEPS     || "10");
+export const DEGRADE_START_RPS = parseInt(__ENV.DEGRADE_START_RPS || "50");
+export const DEGRADE_STEP_RPS  = parseInt(__ENV.DEGRADE_STEP_RPS  || "100");
+export const DEGRADE_STEPS     = parseInt(__ENV.DEGRADE_STEPS     || "20");
 export const DEGRADE_STAGE_SEC = parseInt(__ENV.DEGRADE_STAGE_SEC || "30");
 export const DEGRADE_PRE_VUS   = parseInt(__ENV.DEGRADE_PRE_VUS  || String(Math.max(DEGRADE_START_RPS, 200)));
 export const DEGRADE_MAX_VUS   = parseInt(__ENV.DEGRADE_MAX_VUS  || String((DEGRADE_START_RPS + DEGRADE_STEP_RPS * DEGRADE_STEPS) * 2));
-export const DEGRADE_P99_LIMIT = __ENV.DEGRADE_P99_LIMIT || "1000";   // ms
+export const DEGRADE_P99_LIMIT = __ENV.DEGRADE_P99_LIMIT || "1000";    // ms
 export const DEGRADE_ERR_LIMIT = __ENV.DEGRADE_ERR_LIMIT || "0.01";   // rate
 export const DEGRADE_ABORT_DELAY = __ENV.DEGRADE_ABORT_DELAY || "10s";
 
