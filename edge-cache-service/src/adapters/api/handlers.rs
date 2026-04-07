@@ -87,12 +87,7 @@ fn serve_from_cache(cached: CachedFile, x_cache: &'static str) -> Response<Body>
         return ApiError::internal().into_response();
     };
 
-    let mut resp = download_response(
-        Body::from_stream(cached.stream),
-        x_cache,
-        content_type,
-        etag,
-    );
+    let mut resp = download_response(Body::from(cached.data), x_cache, content_type, etag);
     resp.headers_mut().insert(
         header::CONTENT_LENGTH,
         HeaderValue::from(cached.meta.content_length),
