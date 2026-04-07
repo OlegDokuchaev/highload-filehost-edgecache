@@ -2,6 +2,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bytes::Bytes;
 use edge_cache_service::application::download::{DownloadAction, DownloadError, DownloadUseCase};
 use edge_cache_service::ports::cache::{CacheError, CacheLock, CacheMeta, CachedFile};
 use edge_cache_service::ports::origin::{ConditionalGetResult, OriginError, OriginResponse};
@@ -28,7 +29,7 @@ fn make_cached_file() -> CachedFile {
             expires_at: now_unix() + 3600,
             etag: None,
         },
-        stream: Box::pin(stream::empty()),
+        data: Bytes::new(),
     }
 }
 
@@ -40,7 +41,7 @@ fn make_expired_cached_file() -> CachedFile {
             expires_at: now_unix() - 1,
             etag: None,
         },
-        stream: Box::pin(stream::empty()),
+        data: Bytes::new(),
     }
 }
 
@@ -52,7 +53,7 @@ fn make_expired_cached_file_with_etag() -> CachedFile {
             expires_at: now_unix() - 1,
             etag: Some("\"etag-123\"".to_string()),
         },
-        stream: Box::pin(stream::empty()),
+        data: Bytes::new(),
     }
 }
 
@@ -200,7 +201,7 @@ mod cache_hit {
                     expires_at: now_unix() + 3600,
                     etag: Some("\"abc123\"".to_string()),
                 },
-                stream: Box::pin(stream::empty()),
+                data: Bytes::new(),
             }))
         });
 

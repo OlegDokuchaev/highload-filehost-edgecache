@@ -1,6 +1,5 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-
-use crate::ports::common::ByteStream;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheMeta {
@@ -12,7 +11,7 @@ pub struct CacheMeta {
 
 pub struct CachedFile {
     pub meta: CacheMeta,
-    pub stream: ByteStream,
+    pub data: Bytes,
 }
 
 /// Advisory file lock guard. Releasing happens automatically when dropped (fd close).

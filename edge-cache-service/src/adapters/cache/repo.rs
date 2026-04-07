@@ -4,17 +4,16 @@ use super::writer::CacheWriterImpl;
 use super::{LogOnErr, compute_expires_at, write_meta_atomic};
 use crate::ports::cache::{CacheError, CacheLock, CacheMeta, CacheRepo, CacheWriter, CachedFile};
 use async_trait::async_trait;
+use bytes::Bytes;
 use fs4::tokio::AsyncFileExt;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs::OpenOptions;
-use tokio_util::io::ReaderStream;
 
 #[derive(Clone)]
 pub struct CacheRepoImpl {
     cache_dir: PathBuf,
     default_ttl: Duration,
-    read_buf_size: usize,
 }
 
 impl CacheRepoImpl {
@@ -22,7 +21,6 @@ impl CacheRepoImpl {
         Self {
             cache_dir: PathBuf::from(settings.dir),
             default_ttl: settings.default_ttl,
-            read_buf_size: settings.read_buf_size,
         }
     }
 }
@@ -39,15 +37,17 @@ impl CacheRepo for CacheRepoImpl {
         let meta: CacheMeta =
             serde_json::from_slice(&meta_bytes).warn_on_err("cache meta parse failed")?;
 
-        // read file
+        // mmap data file — zero-copy: pages served directly from kernel page cache
         let file = match tokio::fs::File::open(data_path(&self.cache_dir, file_id)).await {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(e).warn_on_err("cache data read failed")?,
+            Err(e) => return Err(e).warn_on_err("cache data open failed")?,
         };
-        let stream = Box::pin(ReaderStream::with_capacity(file, self.read_buf_size));
+        // SAFETY: cache files are immutable after write — no concurrent modification.
+        let mmap = unsafe { memmap2::Mmap::map(&file) }.warn_on_err("cache data mmap failed")?;
+        let data = Bytes::from_owner(mmap);
 
-        Ok(Some(CachedFile { meta, stream }))
+        Ok(Some(CachedFile { meta, data }))
     }
 
     async fn begin_write(&self, file_id: &str) -> Result<Box<dyn CacheWriter>, CacheError> {
