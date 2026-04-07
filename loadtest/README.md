@@ -75,7 +75,7 @@ Baseline: все VU бьют в один файл (`1mb-hot-0`) напрямую
 | Executor | `constant-arrival-rate` |
 | RPS | 500 |
 | VUs | 50 |
-| Duration | 30s |
+| Duration | 60s |
 | Файл | `1mb-hot-0` |
 
 ### Cache Cold (`cache-cold.js`)
@@ -85,8 +85,8 @@ Baseline: все VU бьют в один файл (`1mb-hot-0`) напрямую
 | Параметр | Значение |
 |----------|----------|
 | Executor | `per-vu-iterations` |
-| VUs | 10 |
-| Итераций на VU | 500 |
+| VUs | 20 |
+| Итераций на VU | 1000 |
 
 ### Cache Warm (`cache-warm.js`)
 
@@ -96,9 +96,9 @@ Baseline: все VU бьют в один файл (`1mb-hot-0`) напрямую
 |----------|----------|
 | Seed | 1 VU × 200 файлов |
 | Executor (warm) | `constant-arrival-rate` |
-| RPS | 200 |
-| VUs | 20 |
-| Duration | 30s |
+| RPS | 300 |
+| VUs | 30 |
+| Duration | 60s |
 
 ### Cache Hot Key (`cache-hot-key.js`)
 
@@ -109,7 +109,7 @@ Baseline: все VU бьют в один файл (`1mb-hot-0`) напрямую
 | Executor | `constant-arrival-rate` |
 | RPS | 500 |
 | VUs | 50 |
-| Duration | 30s |
+| Duration | 60s |
 | Файл | `1mb-hot-0` |
 
 ### Origin Degrade (`origin-degrade.js`)
@@ -118,16 +118,16 @@ Baseline: все VU бьют в один файл (`1mb-hot-0`) напрямую
 
 | Параметр | Значение по умолчанию | Env-переменная |
 |----------|-----------------------|----------------|
-| Start RPS | 100 | `DEGRADE_START_RPS` |
-| Шаг RPS | +200 | `DEGRADE_STEP_RPS` |
-| Кол-во ступеней | 10 | `DEGRADE_STEPS` |
+| Start RPS | 50 | `DEGRADE_START_RPS` |
+| Шаг RPS | +100 | `DEGRADE_STEP_RPS` |
+| Кол-во ступеней | 20 | `DEGRADE_STEPS` |
 | Длительность ступени | 30s | `DEGRADE_STAGE_SEC` |
 | Abort p99 >= | 1000 ms | `DEGRADE_P99_LIMIT` |
 | Abort error >= | 1% | `DEGRADE_ERR_LIMIT` |
 | Delay before abort | 10s | `DEGRADE_ABORT_DELAY` |
 | Файл | `1mb-degrade-0` | `DEGRADE_FILE_ID` |
 
-Ступени (по умолчанию): 100 → 300 → 500 → 700 → 900 → 1100 → 1300 → 1500 → 1700 → 1900 RPS.
+Ступени (по умолчанию): 50 → 150 → 250 → 350 → 450 → 550 → 650 → 750 → 850 → 950 → 1050 → 1150 → 1250 → 1350 → 1450 → 1550 → 1650 → 1750 → 1850 → 1950 RPS.
 
 ### Cache Degrade (`cache-degrade.js`)
 
