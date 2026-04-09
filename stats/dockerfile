@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY main.py /app/main.py
+
+ENTRYPOINT ["python", "/app/main.py"]
+
+# 1. build the image
+# docker build -t github-issues-stats .
+# 1.1. set the environment variable
+# export GITHUB_TOKEN=<your_github_api_token>
+# 2. run the container
+# docker run --rm \
+#   --env "GITHUB_TOKEN=${GITHUB_TOKEN}" \ 
+#   github-issues-stats \
+#   --owner "octocat" \
+#   --repo "Hello-World" \
+#   --period "week" \
+#   --state "all"
+
+# Parameters:
+# --owner: the owner of the repository
+# --repo: the name of the repository
+# --period: the period of the statistics (week/month)
+# --state: the state of the issues (all/open/closed)
+# --since: the date since the issues were created (ISO 8601, e.g. 2026-01-01T00:00:00Z)
+# --token: the GitHub token (optional). If not set, uses GITHUB_TOKEN env var when present.
+# --pr-wait-method: the method to use to detect issue entering PR waiting stage (auto/graphql/rest/none)
