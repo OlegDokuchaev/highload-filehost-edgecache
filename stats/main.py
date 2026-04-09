@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-GitHub issues statistics by week/month.
+Статистика по GitHub issues по неделям/месяцам.
 
-Shows average issue lifetime in days for:
-- avg_open_days: average days spent in open state inside each period
-- avg_closed_days: average days spent in closed state inside each period
+Показывает среднюю длительность issue в днях:
+- avg_open_days: среднее время в открытом состоянии внутри периода
+- avg_closed_days: среднее время в закрытом состоянии внутри периода
 
-Aggregation is done by actual time overlap with each period.
+Агрегация выполняется по фактическому пересечению интервалов с периодом.
+Опционально можно сгенерировать PNG-графики для количеств и средних длительностей.
 """
 
 from __future__ import annotations
@@ -57,40 +58,56 @@ class PeriodStats:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build statistics for GitHub issues: average lifetime in days by week/month."
+            "Формирует статистику по GitHub issues: средняя длительность по неделям/месяцам."
         )
     )
-    parser.add_argument("--owner", required=True, help="Repository owner")
-    parser.add_argument("--repo", required=True, help="Repository name")
+    parser.add_argument("--owner", required=True, help="Владелец репозитория")
+    parser.add_argument("--repo", required=True, help="Имя репозитория")
     parser.add_argument(
         "--period",
         choices=["week", "month"],
         default="week",
-        help="Aggregation period",
+        help="Период агрегации",
     )
     parser.add_argument(
         "--state",
         choices=["all", "open", "closed"],
         default="all",
-        help="Issue state filter for API request",
+        help="Фильтр состояния issue для API-запроса",
     )
     parser.add_argument(
         "--since",
         default=None,
-        help="Only issues updated at or after this time (ISO 8601, e.g. 2026-01-01T00:00:00Z)",
+        help="Учитывать только issues, обновленные не раньше указанного времени (ISO 8601, например 2026-01-01T00:00:00Z)",
     )
     parser.add_argument(
         "--token",
         default=None,
-        help="GitHub token (optional). If not set, uses GITHUB_TOKEN env var when present.",
+        help="GitHub-токен (опционально). Если не задан, используется переменная окружения GITHUB_TOKEN.",
     )
     parser.add_argument(
         "--pr-wait-method",
         choices=["auto", "graphql", "rest", "none"],
         default="auto",
         help=(
-            "How to detect issue entering PR waiting stage: "
-            "graphql timeline, rest closing keywords, auto fallback, or none"
+            "Как определять момент входа issue в стадию ожидания PR: "
+            "graphql timeline, rest closing keywords, auto fallback или none"
+        ),
+    )
+    parser.add_argument(
+        "--counts-png",
+        default=None,
+        help=(
+            "Опциональный путь к PNG с горизонтальными группированными столбцами "
+            "для количеств open/closed/in_pr по периодам."
+        ),
+    )
+    parser.add_argument(
+        "--avg-png",
+        default=None,
+        help=(
+            "Опциональный путь к PNG с горизонтальными группированными столбцами "
+            "для средних open/closed/in_pr дней по периодам."
         ),
     )
     return parser.parse_args()
@@ -108,7 +125,7 @@ def period_key(created_at: dt.datetime, period: str) -> str:
         return f"{year}-W{week:02d}"
     if period == "month":
         return created_at.strftime("%Y-%m")
-    raise ValueError(f"Unsupported period: {period}")
+    raise ValueError(f"Неподдерживаемый период: {period}")
 
 
 def period_floor(value: dt.datetime, period: str) -> dt.datetime:
@@ -118,7 +135,7 @@ def period_floor(value: dt.datetime, period: str) -> dt.datetime:
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
     if period == "month":
         return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    raise ValueError(f"Unsupported period: {period}")
+    raise ValueError(f"Неподдерживаемый период: {period}")
 
 
 def next_period_start(value: dt.datetime, period: str) -> dt.datetime:
@@ -128,7 +145,7 @@ def next_period_start(value: dt.datetime, period: str) -> dt.datetime:
         if value.month == 12:
             return value.replace(year=value.year + 1, month=1, day=1)
         return value.replace(month=value.month + 1, day=1)
-    raise ValueError(f"Unsupported period: {period}")
+    raise ValueError(f"Неподдерживаемый период: {period}")
 
 
 def split_interval_by_period(
@@ -195,9 +212,9 @@ def github_request_json(
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"GitHub API error {exc.code} for {url}\n{body_text}") from exc
+        raise RuntimeError(f"Ошибка GitHub API {exc.code} для {url}\n{body_text}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Network error while calling GitHub API: {exc}") from exc
+        raise RuntimeError(f"Сетевая ошибка при обращении к GitHub API: {exc}") from exc
 
 
 def fetch_issues(owner: str, repo: str, state: str, token: Optional[str], since: Optional[str]) -> Iterable[Dict[str, object]]:
@@ -208,13 +225,13 @@ def fetch_issues(owner: str, repo: str, state: str, token: Optional[str], since:
         url = build_issues_url(owner, repo, state, per_page, page, since)
         payload = github_request_json(url, token=token)
         if not isinstance(payload, list):
-            raise RuntimeError(f"Unexpected GitHub response shape for {url}")
+            raise RuntimeError(f"Неожиданный формат ответа GitHub для {url}")
 
         if not payload:
             break
 
         for item in payload:
-            # Pull requests are also returned by this endpoint.
+            # Этот endpoint также возвращает pull request.
             if "pull_request" in item:
                 continue
             yield item
@@ -229,7 +246,7 @@ def fetch_pull_requests(owner: str, repo: str, token: Optional[str]) -> Iterable
         url = build_pulls_url(owner, repo, state="all", per_page=per_page, page=page)
         payload = github_request_json(url, token=token)
         if not isinstance(payload, list):
-            raise RuntimeError(f"Unexpected GitHub response shape for {url}")
+            raise RuntimeError(f"Неожиданный формат ответа GitHub для {url}")
         if not payload:
             break
         for item in payload:
@@ -238,7 +255,7 @@ def fetch_pull_requests(owner: str, repo: str, token: Optional[str]) -> Iterable
 
 
 def parse_linked_issue_numbers(text: str, owner: str, repo: str) -> set[int]:
-    # Handles patterns like:
+    # Обрабатывает паттерны вида:
     # - closes #123
     # - fixes owner/repo#123
     # - resolved https://github.com/owner/repo/issues/123
@@ -349,9 +366,9 @@ def graphql_issue_in_pr_at(
             },
         )
         if not isinstance(payload, dict):
-            raise RuntimeError("Unexpected GraphQL response shape.")
+            raise RuntimeError("Неожиданный формат ответа GraphQL.")
         if payload.get("errors"):
-            raise RuntimeError(f"GraphQL errors: {payload.get('errors')}")
+            raise RuntimeError(f"Ошибки GraphQL: {payload.get('errors')}")
 
         data = payload.get("data", {})
         repository = data.get("repository") if isinstance(data, dict) else None
@@ -418,7 +435,7 @@ def calculate_stats(
         closed_raw = issue.get("closed_at")
         closed_at = parse_github_datetime(str(closed_raw)) if closed_raw else None
 
-        # Open-state duration split by calendar periods.
+        # Длительность в открытом состоянии, разбитая по календарным периодам.
         open_end = closed_at if closed_at is not None else now
         created_key = period_key(period_floor(created_at, period), period)
         grouped[created_key].open_count += 1
@@ -427,7 +444,7 @@ def calculate_stats(
             grouped[key].open_days_sum += open_days
             grouped[key].open_avg_count += 1
 
-        # Closed-state duration split by calendar periods.
+        # Длительность в закрытом состоянии, разбитая по календарным периодам.
         if closed_at is not None:
             closed_key = period_key(period_floor(closed_at, period), period)
             grouped[closed_key].closed_count += 1
@@ -450,7 +467,7 @@ def calculate_stats(
                     if pr_wait_method == "graphql":
                         raise
                     print(
-                        f"Warning: GraphQL PR-link lookup failed for issue #{issue_number}: {exc}",
+                        f"Предупреждение: не удалось получить связь issue с PR через GraphQL для issue #{issue_number}: {exc}",
                         file=sys.stderr,
                     )
                     graphql_available = False
@@ -480,7 +497,7 @@ def calculate_stats(
 
 def print_table(rows: List[Dict[str, object]], period: str) -> None:
     if not rows:
-        print("No issues found for selected filters.")
+        print("По выбранным фильтрам issues не найдены.")
         return
 
     headers = [
@@ -523,11 +540,61 @@ def print_table(rows: List[Dict[str, object]], period: str) -> None:
         print(" | ".join(row[i].ljust(widths[i]) for i in range(len(headers))))
 
 
+def write_grouped_png(
+    rows: List[Dict[str, object]],
+    output_path: str,
+    period_label: str,
+    title: str,
+    x_label: str,
+    key_open: str,
+    key_closed: str,
+    key_in_pr: str,
+) -> None:
+    if not rows:
+        return
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise RuntimeError(
+            "Для экспорта PNG-графиков требуется matplotlib. "
+            "Установите пакет: pip install matplotlib"
+        ) from exc
+
+    periods = [str(row["period"]) for row in rows]
+    open_vals = [float(row.get(key_open) or 0.0) for row in rows]
+    closed_vals = [float(row.get(key_closed) or 0.0) for row in rows]
+    in_pr_vals = [float(row.get(key_in_pr) or 0.0) for row in rows]
+
+    y_positions = list(range(len(periods)))
+    bar_height = 0.24
+    y_open = [y - bar_height for y in y_positions]
+    y_closed = y_positions
+    y_in_pr = [y + bar_height for y in y_positions]
+
+    fig_height = max(4, len(periods) * 0.5 + 1.5)
+    _, ax = plt.subplots(figsize=(12, fig_height))
+    ax.barh(y_open, open_vals, height=bar_height, label="Открыто", color="#1f77b4")
+    ax.barh(y_closed, closed_vals, height=bar_height, label="Закрыто", color="#ff7f0e")
+    ax.barh(y_in_pr, in_pr_vals, height=bar_height, label="В PR", color="#2ca02c")
+
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(periods)
+    ax.set_ylabel(period_label)
+    ax.set_xlabel(x_label)
+    ax.set_title(title)
+    ax.grid(axis="x", linestyle="--", alpha=0.35)
+    ax.legend()
+    fig = ax.get_figure()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
 def main() -> int:
     args = parse_args()
     token = args.token
     if token is None:
-        # Lazy import to keep module imports simple.
         import os
 
         token = os.getenv("GITHUB_TOKEN")
@@ -553,6 +620,32 @@ def main() -> int:
         return 1
 
     print_table(rows, args.period)
+    if args.counts_png:
+        write_grouped_png(
+            rows=rows,
+            output_path=args.counts_png,
+            period_label=args.period,
+            title=f"Количество задач по {args.period}",
+            x_label="количество задач",
+            key_open="open_issues_count",
+            key_closed="closed_issues_count",
+            key_in_pr="in_pr_issues_count",
+        )
+        print(f"Сохранен график количеств: {args.counts_png}")
+
+    if args.avg_png:
+        write_grouped_png(
+            rows=rows,
+            output_path=args.avg_png,
+            period_label=args.period,
+            title=f"Средняя длительность задач по {args.period}",
+            x_label="дни",
+            key_open="avg_open_days",
+            key_closed="avg_closed_days",
+            key_in_pr="avg_in_pr_days",
+        )
+        print(f"Сохранен график средних: {args.avg_png}")
+
     return 0
 
 
