@@ -66,25 +66,71 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── Edge Cache Service ──────────────────────────────────────
-  edge-cache-service:
+  # ── Edge Cache Instances ─────────────────────────────────────
+  edge-cache-1:
     build:
       context: ./edge-cache-service
       dockerfile: Dockerfile
-    container_name: edge-cache-service
+    container_name: edge-cache-1
     env_file:
       - ./edge-cache-service/.env
-    ports:
-      - "3000:3000"
     user: root
     volumes:
-      - edge_cache_data:/app/cache
+      - edge_cache_data_1:/app/cache
     depends_on:
       origin-service:
         condition: service_started
     restart: unless-stopped
 
+  edge-cache-2:
+    build:
+      context: ./edge-cache-service
+      dockerfile: Dockerfile
+    container_name: edge-cache-2
+    env_file:
+      - ./edge-cache-service/.env
+    user: root
+    volumes:
+      - edge_cache_data_2:/app/cache
+    depends_on:
+      origin-service:
+        condition: service_started
+    restart: unless-stopped
+
+  edge-cache-3:
+    build:
+      context: ./edge-cache-service
+      dockerfile: Dockerfile
+    container_name: edge-cache-3
+    env_file:
+      - ./edge-cache-service/.env
+    user: root
+    volumes:
+      - edge_cache_data_3:/app/cache
+    depends_on:
+      origin-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Edge Gateway (load balancer) ────────────────────────────
+  edge-gateway:
+    build:
+      context: ./edge-gateway
+      dockerfile: Dockerfile
+    container_name: edge-gateway
+    env_file:
+      - ./edge-gateway/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - edge-cache-1
+      - edge-cache-2
+      - edge-cache-3
+    restart: unless-stopped
+
 volumes:
   minio_data:
   users_pg_data:
-  edge_cache_data:
+  edge_cache_data_1:
+  edge_cache_data_2:
+  edge_cache_data_3:

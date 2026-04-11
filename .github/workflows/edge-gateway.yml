@@ -1,0 +1,43 @@
+name: Edge Gateway CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "edge-gateway/**"
+      - ".github/workflows/edge-gateway.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "edge-gateway/**"
+      - ".github/workflows/edge-gateway.yml"
+
+defaults:
+  run:
+    working-directory: edge-gateway
+
+jobs:
+  # ===========================
+  # 1. Linting
+  # ===========================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edge-gateway
+
+      - name: Run fmt check
+        run: make fmt-check
+
+      - name: Run clippy
+        run: make clippy
