@@ -124,12 +124,22 @@ jobs:
           timeout 30 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done'
 
       - name: Start stub auth verifier
-        working-directory: .
+        working-directory: ./origin-service/stubverifier
         run: |
-          docker build -f origin-service/Dockerfile.stub -t origin-stub-auth ./origin-service
-          docker run -d --name stub-auth -p 8081:8081 origin-stub-auth
-          BODY='{"token":"test-token-user-1"}'
-          timeout 30 bash -c "until curl -sf -X POST http://localhost:8081/auth/verify -H 'Content-Type: application/json' -d \"$BODY\" | grep -q '\"active\":true'; do sleep 1; done"
+          go mod tidy
+          go build -o stub-token .
+          ./stub-token &
+          for i in $(seq 1 60); do
+            if curl -sf -X POST http://localhost:8081/auth/verify \
+              -H "Content-Type: application/json" \
+              -d '{"token":"test-token-user-1"}' \
+              | grep -q '"active":true'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "stub auth verifier did not become ready in time"
+          exit 1
 
       - name: Build & start origin service
         run: |
