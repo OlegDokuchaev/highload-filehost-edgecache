@@ -138,7 +138,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "stub auth verifier did not become ready in time"
+          echo "stub auth verifier did not become ready in time."
           exit 1
 
       - name: Build & start origin service
