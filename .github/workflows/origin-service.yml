@@ -123,6 +123,14 @@ jobs:
             minio/minio server /data
           timeout 30 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done'
 
+      - name: Start stub auth verifier
+        working-directory: .
+        run: |
+          docker build -f origin-service/Dockerfile.stub -t origin-stub-auth ./origin-service
+          docker run -d --name stub-auth -p 8081:8081 origin-stub-auth
+          BODY='{"token":"test-token-user-1"}'
+          timeout 30 bash -c "until curl -sf -X POST http://localhost:8081/auth/verify -H 'Content-Type: application/json' -d \"$BODY\" | grep -q '\"active\":true'; do sleep 1; done"
+
       - name: Build & start origin service
         run: |
           go build -o origin-service .
@@ -141,7 +149,7 @@ jobs:
             minio_use_ssl: false
             download_base_url: "http://localhost:8080"
             download_url_expiry: 3600
-            auth_verify_url: ""
+            auth_verify_url: "http://localhost:8081/auth/verify"
           EOF
           ./origin-service &
           timeout 30 bash -c 'until curl -sf http://localhost:8080/health; do sleep 1; done'
