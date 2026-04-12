@@ -1,0 +1,136 @@
+services:
+  # ── Origin Service ──────────────────────────────────────────
+  origin-service:
+    build:
+      context: ./origin-service
+      dockerfile: Dockerfile
+    container_name: origin-service
+    depends_on:
+      minio:
+        condition: service_healthy
+      users-service:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Users Service ───────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: users-postgres
+    environment:
+      POSTGRES_DB: users_db
+      POSTGRES_USER: users
+      POSTGRES_PASSWORD: users
+    ports:
+      - "5432:5432"
+    volumes:
+      - users_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U users -d users_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  users-service:
+    build:
+      context: ./users-service
+      dockerfile: Dockerfile
+    container_name: users-service
+    env_file:
+      - ./users-service/.env
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Edge Cache Instances ─────────────────────────────────────
+  edge-cache-1:
+    build:
+      context: ./edge-cache-service
+      dockerfile: Dockerfile
+    container_name: edge-cache-1
+    env_file:
+      - ./edge-cache-service/.env
+    user: root
+    volumes:
+      - edge_cache_data_1:/app/cache
+    depends_on:
+      origin-service:
+        condition: service_started
+    restart: unless-stopped
+
+  edge-cache-2:
+    build:
+      context: ./edge-cache-service
+      dockerfile: Dockerfile
+    container_name: edge-cache-2
+    env_file:
+      - ./edge-cache-service/.env
+    user: root
+    volumes:
+      - edge_cache_data_2:/app/cache
+    depends_on:
+      origin-service:
+        condition: service_started
+    restart: unless-stopped
+
+  edge-cache-3:
+    build:
+      context: ./edge-cache-service
+      dockerfile: Dockerfile
+    container_name: edge-cache-3
+    env_file:
+      - ./edge-cache-service/.env
+    user: root
+    volumes:
+      - edge_cache_data_3:/app/cache
+    depends_on:
+      origin-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Edge Gateway (load balancer) ────────────────────────────
+  edge-gateway:
+    build:
+      context: ./edge-gateway
+      dockerfile: Dockerfile
+    container_name: edge-gateway
+    env_file:
+      - ./edge-gateway/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - edge-cache-1
+      - edge-cache-2
+      - edge-cache-3
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+  users_pg_data:
+  edge_cache_data_1:
+  edge_cache_data_2:
+  edge_cache_data_3:

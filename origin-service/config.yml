@@ -1,0 +1,17 @@
+logging:
+  level: debug      # debug, info, warn, error
+  format: json     # json или text
+  output: stdout   # stdout, stderr, file
+  file: /var/log/origin-service.log   # если output = file
+
+app:
+  port: "8080"
+  max_upload_size_bytes: 52428800  # 50 MiB
+  minio_endpoint: "minio:9000"
+  minio_access_key: "minioadmin"
+  minio_secret_key: "minioadmin"
+  minio_bucket: "origin-bucket"
+  minio_use_ssl: false
+  download_base_url: "http://localhost:8080"
+  download_url_expiry: 3600
+  auth_verify_url: "http://users-service:8081/auth/verify"

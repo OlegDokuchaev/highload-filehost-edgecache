@@ -1,0 +1,325 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Origin Storage Service",
+    "description": "Service that stores original files and serves them with caching headers.\nSupports conditional requests (If-None-Match → 304 Not Modified).",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080/",
+      "description": "Origin service local endpoint"
+    }
+  ],
+  "paths": {
+    "/files": {
+      "post": {
+        "summary": "Upload a file",
+        "description": "Creates a new file record and stores the uploaded binary.\nRequires a valid JWT token for authentication.",
+        "operationId": "uploadFile",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file to upload"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "File uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileMetadata"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing file in request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "Missing file"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing JWT token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large (file exceeds allowed size)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/files": {
+      "get": {
+        "summary": "List files of current user",
+        "description": "Returns a paginated list of files owned by the authenticated user.",
+        "operationId": "listUserFiles",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing JWT token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/{file_id}": {
+      "get": {
+        "summary": "Download original file",
+        "description": "Returns the binary file content with caching headers (Cache-Control, ETag).\nSupports conditional requests using If-None-Match header.\nThis endpoint is public (no authentication required) for edge cache usage.",
+        "operationId": "downloadFile",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the file"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag value from a previous response for conditional GET"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content",
+            "headers": {
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "MIME type of the file"
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache policy (e.g., \"public, s-maxage=86400, max-age=3600\")"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Opaque entity tag for the file version"
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not Modified – file hasn't changed since the provided ETag",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Same ETag as sent in the request"
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT token obtained from the Users service"
+      }
+    },
+    "schemas": {
+      "FileMetadata": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "owner_user_id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "created_at",
+          "download_url"
+        ],
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "owner_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "filename": {
+            "type": "string",
+            "example": "video.mp4"
+          },
+          "content_type": {
+            "type": "string",
+            "example": "video/mp4"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "example": 123456
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-02-13T14:10:00Z"
+          },
+          "download_url": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://cdn.example.com/download/550e8400-e29b-41d4-a716-446655440000"
+          }
+        }
+      },
+      "FileListItem": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "created_at",
+          "download_url"
+        ],
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "download_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "FileList": {
+        "type": "object",
+        "required": ["items", "total"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileListItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "example": 1
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable error message"
+          }
+        }
+      }
+    }
+  }
+}

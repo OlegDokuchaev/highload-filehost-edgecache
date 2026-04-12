@@ -1,0 +1,10 @@
+FROM golang:1.22-alpine
+
+WORKDIR /app
+
+COPY src/go.mod src/go.sum* ./
+COPY src/ ./
+COPY tests/ ./tests/
+RUN go mod tidy
+
+CMD ["sh", "-c", "go test ./tests/integration -v"]

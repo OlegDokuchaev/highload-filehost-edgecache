@@ -1,0 +1,21 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+
+
+# COPY stubverifier/go.mod stubverifier/go.sum* ./
+# RUN go mod download
+
+COPY stubverifier/ ./
+RUN go mod tidy && go build -o stub-token .
+
+FROM alpine:3.20
+
+WORKDIR /app
+
+COPY --from=builder /app/stub-token /usr/local/bin/stub-token
+
+
+EXPOSE 8081
+
+ENTRYPOINT ["/usr/local/bin/stub-token"]

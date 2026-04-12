@@ -1,0 +1,173 @@
+name: Origin Service CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "origin-service/**"
+      - ".github/workflows/origin-service.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "origin-service/**"
+      - ".github/workflows/origin-service.yml"
+
+jobs:
+  # ===========================
+  # 1. Linting
+  # ===========================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./origin-service/src
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: origin-service/src/go.sum
+
+      - name: Download dependencies
+        run: go mod tidy
+
+      - name: Build
+        run: go build ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: ./origin-service/src
+          args: --timeout=5m ./...
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || { echo "Not formatted:"; gofmt -l .; exit 1; }
+
+      - name: Run go vet
+        run: go vet ./...
+
+  # ===========================
+  # 2. Unit tests
+  # ===========================
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: ./origin-service/src
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: origin-service/src/go.sum
+
+      - name: Start MinIO
+        working-directory: .
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          timeout 30 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done'
+
+      - name: Run unit tests
+        env:
+          MINIO_ENDPOINT: localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+        run: |
+          cp -r ../tests tests
+          go mod tidy
+          go test ./tests/unit -v -count=1
+
+  # ==========================================
+  # 3. Integration tests
+  # ==========================================
+  integration:
+    name: Integration tests
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    needs: unit
+    defaults:
+      run:
+        working-directory: ./origin-service/src
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: origin-service/src/go.sum
+
+      - name: Start MinIO
+        working-directory: .
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          timeout 30 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done'
+
+      - name: Start stub auth verifier
+        working-directory: ./origin-service/stubverifier
+        run: |
+          go mod tidy
+          go build -o stub-token .
+          ./stub-token &
+          for i in $(seq 1 60); do
+            if curl -sf -X POST http://localhost:8081/auth/verify \
+              -H "Content-Type: application/json" \
+              -d '{"token":"test-token-user-1"}' \
+              | grep -q '"active":true'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "stub auth verifier did not become ready in time."
+          exit 1
+
+      - name: Build & start origin service
+        run: |
+          go build -o origin-service .
+          cat > config.yml << 'EOF'
+          logging:
+            level: info
+            format: text
+            output: stdout
+          app:
+            port: "8080"
+            max_upload_size_bytes: 52428800
+            minio_endpoint: "localhost:9000"
+            minio_access_key: "minioadmin"
+            minio_secret_key: "minioadmin"
+            minio_bucket: "origin-bucket"
+            minio_use_ssl: false
+            download_base_url: "http://localhost:8080"
+            download_url_expiry: 3600
+            auth_verify_url: "http://localhost:8081/auth/verify"
+          EOF
+          ./origin-service &
+          timeout 30 bash -c 'until curl -sf http://localhost:8080/health; do sleep 1; done'
+
+      - name: Run integration tests
+        env:
+          API_BASE_URL: http://localhost:8080
+        run: |
+          cp -r ../tests tests
+          go mod tidy
+          go test ./tests/integration -v -count=1
