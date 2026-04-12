@@ -1,0 +1,6 @@
+.env
+token
+run.sh
+build.sh
+**/*__pycache__**
+out/

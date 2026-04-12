@@ -1,0 +1,65 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir matplotlib
+
+COPY main.py /app/main.py
+
+ENTRYPOINT ["python", "/app/main.py"]
+
+# 1. Собрать образ
+# docker build -t github-issues-stats .
+# 1.1. Установить переменную окружения
+# export GITHUB_TOKEN=<your_github_api_token>
+# 2. Запустить контейнер (только таблица)
+# docker run --rm \
+#   --env "GITHUB_TOKEN=${GITHUB_TOKEN}" \
+#   github-issues-stats \
+#   --owner "gigachad" \
+#   --repo "lair" \
+#   --period "week" \
+#   --state "all"
+#
+# 3. Запустить и выгрузить PNG-графики на хост:
+# mkdir -p ./out
+# docker run --rm \
+#   --env "GITHUB_TOKEN=${GITHUB_TOKEN}" \
+#   -v "$(pwd)/out:/out" \
+#   github-issues-stats \
+#   --owner "gigachad" \
+#   --repo "lair" \
+#   --period "week" \
+#   --state "all" \
+#   --counts-png "/out/counts.png" \
+#   --avg-png "/out/avg-days.png"
+#
+# После этого файлы появятся на хосте:
+# ./out/counts.png
+# ./out/avg-days.png
+#
+# Полный запуск с дополнительными параметрами:
+# docker run --rm \
+#   --env "GITHUB_TOKEN=${GITHUB_TOKEN}" \
+#   -v "$(pwd)/out:/out" \
+#   github-issues-stats \
+#   --owner "gigachad" \
+#   --repo "lair" \
+#   --period "week" \
+#   --state "all" \
+#   --since "2026-01-01T00:00:00Z" \
+#   --token "your_github_api_token" \
+#   --pr-wait-method "auto" \
+#   --counts-png "/out/counts.png" \
+#   --avg-png "/out/avg-days.png"
+
+# Параметры:
+# --owner: владелец репозитория
+# --repo: имя репозитория
+# --period: период статистики (week/month)
+# --state: состояние issues (all/open/closed)
+# --since: дата, начиная с которой учитывать issues (ISO 8601, например 2026-01-01T00:00:00Z)
+# --token: GitHub-токен (опционально). Если не задан, используется GITHUB_TOKEN из переменных окружения.
+# --pr-wait-method: метод определения момента входа issue в ожидание PR (auto/graphql/rest/none)
+# --counts-png: опциональный путь к PNG-графику количественных метрик (open/closed/in_pr)
+# --avg-png: опциональный путь к PNG-графику средних времен (avg_open_days/avg_closed_days/avg_in_pr_days)
