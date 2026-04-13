@@ -41,3 +41,37 @@ jobs:
 
       - name: Run clippy
         run: make clippy
+
+  # ===========================
+  # 2. Build & Push image
+  # ===========================
+  deploy:
+    name: Build & Push image
+    if: github.ref == 'refs/heads/main'
+    needs: [lint]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Lowercase owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./edge-gateway
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/edge-gateway:latest
+            ghcr.io/${{ env.OWNER }}/edge-gateway:${{ github.sha }}
