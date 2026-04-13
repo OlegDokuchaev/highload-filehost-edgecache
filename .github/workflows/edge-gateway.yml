@@ -57,6 +57,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Lowercase owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -70,5 +73,5 @@ jobs:
           context: ./edge-gateway
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/edge-gateway:latest
-            ghcr.io/${{ github.repository_owner }}/edge-gateway:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/edge-gateway:latest
+            ghcr.io/${{ env.OWNER }}/edge-gateway:${{ github.sha }}
